@@ -294,15 +294,43 @@ export const calculateOverlapSpacing = (
 ): OverlapSpacingResult => {
   const { focalLength, sensorWidth, sensorHeight } = cameraSpecs;
 
+  // --- BEGIN DEBUG LOGGING ---
+  // console.log(`[calculateOverlapSpacing] Received values:`);
+  // console.log(`  - overlapH: ${overlapH} (Type: ${typeof overlapH})`);
+  // console.log(`  - overlapV: ${overlapV} (Type: ${typeof overlapV})`);
+  // console.log(`  - flightAltitude: ${flightAltitude} (Type: ${typeof flightAltitude})`);
+  // console.log(`  - focalLength: ${focalLength}, sensorWidth: ${sensorWidth}, sensorHeight: ${sensorHeight}`);
+  // --- END DEBUG LOGGING ---
+
   // Validate inputs
   if (focalLength <= 0 || sensorWidth <= 0 || sensorHeight <= 0) {
     throw new Error("Camera specifications (focalLength, sensorWidth, sensorHeight) must be positive.");
   }
-  if (overlapH < 0 || overlapH >= 1) {
-    throw new Error("Horizontal overlap must be between 0 (inclusive) and 1 (exclusive).");
+
+  // --- Rewritten Overlap H Validation Check ---
+  const isOverlapHValid = (overlapH >= 0 && overlapH < 1);
+  // console.log(`[calculateOverlapSpacing] Checking overlapH (${overlapH}) with rewritten logic:`);
+  // console.log(`  - overlapH >= 0 ? ${overlapH >= 0}`);
+  // console.log(`  - overlapH < 1 ? ${overlapH < 1}`);
+  // console.log(`  - Combined VALID check (overlapH >= 0 && overlapH < 1) evaluates to: ${isOverlapHValid}`);
+  // --- End Rewritten Check ---
+  
+  if (!isOverlapHValid) { // Throw error if NOT valid
+    // console.error("[calculateOverlapSpacing] The !isOverlapHValid condition evaluated to true unexpectedly.");
+    throw new Error("Horizontal overlap must be between 0 (inclusive) and 1 (exclusive). Original value: " + overlapH);
   }
-  if (overlapV < 0 || overlapV >= 1) {
-     throw new Error("Vertical overlap must be between 0 (inclusive) and 1 (exclusive).");
+
+  // --- Rewritten Overlap V Validation Check ---
+  const isOverlapVValid = (overlapV >= 0 && overlapV < 1);
+  // console.log(`[calculateOverlapSpacing] Checking overlapV (${overlapV}) with rewritten logic:`);
+  // console.log(`  - overlapV >= 0 ? ${overlapV >= 0}`);
+  // console.log(`  - overlapV < 1 ? ${overlapV < 1}`);
+  // console.log(`  - Combined VALID check (overlapV >= 0 && overlapV < 1) evaluates to: ${isOverlapVValid}`);
+  // --- End Rewritten Check ---
+
+  if (!isOverlapVValid) { // Throw error if NOT valid
+     // console.error("[calculateOverlapSpacing] The !isOverlapVValid condition evaluated to true unexpectedly.");
+     throw new Error("Vertical overlap must be between 0 (inclusive) and 1 (exclusive). Original value: " + overlapV);
   }
    if (flightAltitude <= 0) {
     // Allow 0 altitude? Maybe for object scanning? For now, require positive AGL.
