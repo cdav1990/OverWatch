@@ -8,6 +8,9 @@ node_modules/
 # Exclude the reference directory
 /reference/
 
+# Large files
+client/public/Assets/Drone\ models/Alta\ X\ Shell\ Model.stp
+
 # Build outputs
 /dist/
 /build/
