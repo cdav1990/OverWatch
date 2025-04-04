@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@mui/x-tree-view": "^7.28.1",
+    "@react-three/drei": "^10.0.5",
+    "@react-three/fiber": "^9.1.1",
+    "three": "^0.175.0"
+  }
+}

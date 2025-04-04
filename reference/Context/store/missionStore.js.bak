@@ -1,0 +1,287 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { localToGlobal, globalToLocal } from '../utils/sceneManager'
+import * as GeoUtils from '../utils/geoUtils'
+
+export const useMissionStore = defineStore('mission', {
+  state: () => ({
+    // Mission basics
+    missionType: null, // 'survey', 'inspection', 'manual'
+    workflowStep: 'setup', // 'precheck', 'planning', 'review', 'setup'
+    
+    // Coordinates
+    originCoordinates: { lat: 0, lng: 0, alt: 0 },
+    takeoffLocation: null,
+    waypoints: [],
+    selectedWaypoint: null,
+    
+    // Equipment
+    camera: null,
+    
+    // Survey settings
+    surveySettings: {
+      altitude: 50, // meters
+      frontOverlap: 80, // percent
+      sideOverlap: 70, // percent
+      gridAngle: 0, // degrees
+    },
+    
+    // Safety settings
+    safetySettings: {
+      returnToHome: 'takeoff', // 'takeoff', 'first_waypoint', 'last_waypoint'
+      failsafeAltitude: 30, // meters
+      missionEndBehavior: 'rtl', // 'rtl', 'land', 'hover'
+    },
+    
+    // Hardware state
+    hardware: {
+      drone: 'astro',      // Default to FreeFly Astro
+      camera: 'ilx',       // Default to Sony ILX
+      lens: '50mm f/1.8',  // Default to 50mm lens
+      lidar: 'none',       // Default to no LiDAR
+      fStop: 2.8,          // Default f-stop 
+      focusDistance: 10    // Default focus distance in feet
+    },
+    
+    // Drone position state
+    dronePosition: {
+      x: 0,                // Lateral position (left/right)
+      y: 50,               // Height in feet
+      z: 0,                // Lateral position (forward/backward)
+      followCamera: false  // Whether camera follows drone
+    }
+  }),
+  
+  getters: {
+    // Calculate Ground Sample Distance (GSD) in cm/pixel
+    gsd: (state) => {
+      if (!state.camera) return null
+      
+      // This is a simplified calculation
+      // In real applications, you'd use the camera sensor size, focal length, 
+      // and altitude to calculate this more precisely
+      const altitude = state.surveySettings.altitude
+      
+      // Example calculation (adjust based on actual camera specs):
+      // GSD = (sensor width * altitude * 100) / (focal length * image width)
+      return (altitude * 100) / 20 // Example value in cm/pixel
+    },
+    
+    // Calculate image footprint in meters (width x height)
+    imageFootprint: (state) => {
+      if (!state.camera || !state.gsd) return null
+      
+      // Example calculation:
+      const gsdInMeters = state.gsd / 100
+      
+      // Get image dimensions from camera resolution
+      // Parsing example resolution string "20MP (5280×3956)"
+      let width = 5000
+      let height = 3750
+      
+      if (state.camera.resolution) {
+        const match = state.camera.resolution.match(/\((\d+)×(\d+)\)/)
+        if (match) {
+          width = parseInt(match[1])
+          height = parseInt(match[2])
+        }
+      }
+      
+      return {
+        width: width * gsdInMeters,
+        height: height * gsdInMeters
+      }
+    },
+    
+    // Calculate total distance of waypoints in meters
+    totalDistance: (state) => {
+      if (state.waypoints.length < 2) return 0
+      
+      let distance = 0
+      for (let i = 1; i < state.waypoints.length; i++) {
+        const prev = state.waypoints[i - 1]
+        const curr = state.waypoints[i]
+        
+        // Calculate Euclidean distance
+        const dx = curr.position.lat - prev.position.lat
+        const dz = curr.position.lng - prev.position.lng
+        const dy = (curr.height || 0) - (prev.height || 0)
+        
+        distance += Math.sqrt(dx * dx + dy * dy + dz * dz)
+      }
+      
+      return distance
+    },
+    
+    // Estimated time for mission in seconds
+    estimatedTime: (state) => {
+      if (state.totalDistance === 0) return 0
+      
+      // Assume average speed of 5 m/s
+      const averageSpeed = 5 // m/s
+      
+      // Add time for each waypoint (5 seconds per waypoint)
+      const waypointTime = state.waypoints.length * 5 // seconds
+      
+      return (state.totalDistance / averageSpeed) + waypointTime
+    }
+  },
+  
+  actions: {
+    // Set mission type
+    setMissionType(type) {
+      this.missionType = type
+    },
+    
+    // Set workflow step
+    setWorkflowStep(step) {
+      this.workflowStep = step
+    },
+    
+    // Set origin coordinates
+    setOriginCoordinates(lat, lng, alt) {
+      this.originCoordinates = { lat, lng, alt }
+    },
+    
+    // Set takeoff location
+    setTakeoffLocation(location) {
+      this.takeoffLocation = location
+    },
+    
+    // Set camera
+    setCamera(camera) {
+      this.camera = camera
+    },
+    
+    // Add waypoint
+    addWaypoint(waypoint) {
+      this.waypoints.push(waypoint)
+    },
+    
+    // Update waypoint
+    updateWaypoint(index, waypoint) {
+      if (index >= 0 && index < this.waypoints.length) {
+        this.waypoints[index] = waypoint
+      }
+    },
+    
+    // Remove waypoint
+    removeWaypoint(index) {
+      if (index >= 0 && index < this.waypoints.length) {
+        this.waypoints.splice(index, 1)
+        
+        // Update selected waypoint if needed
+        if (this.selectedWaypoint === index) {
+          this.selectedWaypoint = null
+        } else if (this.selectedWaypoint > index) {
+          this.selectedWaypoint--
+        }
+      }
+    },
+    
+    // Select waypoint
+    selectWaypoint(index) {
+      this.selectedWaypoint = index
+    },
+    
+    // Update survey settings
+    updateSurveySettings(settings) {
+      this.surveySettings = { ...this.surveySettings, ...settings }
+    },
+    
+    // Update safety settings
+    updateSafetySettings(settings) {
+      this.safetySettings = { ...this.safetySettings, ...settings }
+    },
+    
+    // Generate survey grid based on parameters
+    generateSurveyGrid(boundaries) {
+      // Clear existing waypoints
+      this.waypoints = []
+      
+      if (!boundaries || !this.takeoffLocation) return
+      
+      // Implementation would generate waypoints based on:
+      // - Area boundaries
+      // - Survey settings (altitude, overlap, angle)
+      // - Camera parameters
+      
+      // This is a simplified placeholder. A real implementation would:
+      // 1. Calculate flight lines based on overlap and image footprint
+      // 2. Generate waypoints along these lines
+      // 3. Optimize for efficient coverage
+      
+      // For now, just add some dummy waypoints for illustration
+      const altitude = this.surveySettings.altitude
+      const startX = this.takeoffLocation.lat - 5
+      const startY = this.takeoffLocation.lng - 5
+      
+      // Create a simple grid pattern
+      for (let i = 0; i < 3; i++) {
+        if (i % 2 === 0) {
+          // Left to right
+          for (let j = 0; j < 5; j++) {
+            this.addWaypoint({
+              position: {
+                lat: startX + j * 2,
+                lng: startY + i * 2
+              },
+              height: altitude
+            })
+          }
+        } else {
+          // Right to left
+          for (let j = 4; j >= 0; j--) {
+            this.addWaypoint({
+              position: {
+                lat: startX + j * 2,
+                lng: startY + i * 2
+              },
+              height: altitude
+            })
+          }
+        }
+      }
+    },
+    
+    /**
+     * Set the hardware configuration for the mission
+     */
+    setHardware(hardware) {
+      this.hardware = {
+        ...this.hardware,
+        ...hardware
+      }
+    },
+    
+    /**
+     * Update the drone position
+     */
+    setDronePosition(position) {
+      this.dronePosition = {
+        ...this.dronePosition,
+        ...position
+      }
+    },
+    
+    /**
+     * Toggle whether the camera follows the drone
+     */
+    toggleFollowCamera() {
+      this.dronePosition.followCamera = !this.dronePosition.followCamera
+    },
+    
+    /**
+     * Update camera settings (f-stop and focus distance)
+     */
+    updateCameraSettings({ fStop, focusDistance }) {
+      if (fStop !== undefined) {
+        this.hardware.fStop = fStop
+      }
+      
+      if (focusDistance !== undefined) {
+        this.hardware.focusDistance = focusDistance
+      }
+    }
+  }
+}) 
