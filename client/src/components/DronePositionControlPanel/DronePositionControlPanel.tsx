@@ -43,72 +43,121 @@ const PanelContainer = styled(Paper)(({ theme }) => ({
     top: '20px',
     right: '20px',
     width: '350px',
-    padding: theme.spacing(2),
-    backgroundColor: 'rgba(30, 30, 30, 0.9)', // Dark semi-transparent background
+    padding: theme.spacing(1.5),
+    backgroundColor: 'rgba(21, 21, 21, 0.97)',
     color: theme.palette.common.white,
-    borderRadius: '8px',
-    boxShadow: theme.shadows[5],
+    borderRadius: '4px',
+    boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
     zIndex: 1300, // Ensure it's above other elements like Cesium/3D viewer controls
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(1),
 }));
 
-const Header = styled(Box)({
+const Header = styled(Box)(({ theme }) => ({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '8px',
-});
+    marginBottom: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+}));
 
-const ControlRow = styled(Box)({
+const ControlRow = styled(Box)(({ theme }) => ({
     display: 'flex',
     alignItems: 'center',
-    gap: '16px',
-});
+    marginBottom: theme.spacing(1.5),
+    gap: theme.spacing(1.5),
+}));
 
 const SliderLabel = styled(Typography)({
-    minWidth: '150px', // Ensure labels align
-    fontSize: '0.9rem',
+    minWidth: '130px',
+    fontSize: '0.85rem',
+    color: '#ddd',
+    fontWeight: 400,
 });
 
-const ValueDisplay = styled(Box)({
-    minWidth: '60px', // Increased minWidth for more space
+const ValueDisplay = styled(Box)(({ theme }) => ({
+    minWidth: '70px',
     textAlign: 'right',
-    padding: '4px 8px',
-    backgroundColor: 'rgba(80, 80, 80, 0.7)',
-    borderRadius: '4px',
-    fontSize: '0.85rem',
-});
+    padding: '3px 6px',
+    borderRadius: '2px',
+    fontSize: '0.8rem',
+    fontFamily: 'monospace',
+    letterSpacing: '0.5px',
+    backgroundColor: 'rgba(40, 40, 40, 0.9)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    color: '#4fc3f7'
+}));
 
 const StyledSlider = styled(Slider)(({ theme }) => ({
-    color: theme.palette.info.light, // Use a theme color
+    color: '#4fc3f7',
+    height: 4,
     flexGrow: 1,
+    '& .MuiSlider-rail': {
+        opacity: 0.4,
+        backgroundColor: '#444',
+    },
+    '& .MuiSlider-track': {
+        border: 'none',
+        height: 4,
+    },
     '& .MuiSlider-thumb': {
-        backgroundColor: theme.palette.info.main,
+        height: 14,
+        width: 14,
+        backgroundColor: '#4fc3f7',
+        '&:focus, &:hover, &.Mui-active, &.Mui-focusVisible': {
+            boxShadow: '0 0 0 8px rgba(79, 195, 247, 0.16)',
+        },
     },
     '& .MuiSlider-valueLabel': {
-        backgroundColor: theme.palette.grey[700],
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        fontSize: '0.7rem',
+        padding: '2px 4px',
     },
 }));
 
 const StyledSwitch = styled(Switch)(({ theme }) => ({
     '& .MuiSwitch-switchBase.Mui-checked': {
-      color: theme.palette.warning.main, // Use a theme color (e.g., yellow/amber)
+      color: '#4fc3f7',
       '& + .MuiSwitch-track': {
-        backgroundColor: theme.palette.warning.main,
+        backgroundColor: 'rgba(79, 195, 247, 0.6)',
       },
     },
-    // Adjust track color if needed for unchecked state
-  }));
-
-const SectionTitle = styled(Typography)(({ theme }) => ({
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(1),
-    fontWeight: 'bold',
-    color: theme.palette.grey[400],
+    '& .MuiSwitch-switchBase': {
+      color: '#9e9e9e',
+    },
+    '& .MuiSwitch-track': {
+      backgroundColor: 'rgba(158, 158, 158, 0.6)',
+    },
 }));
 
+const SectionTitle = styled(Typography)(({ theme }) => ({
+    marginTop: theme.spacing(1.5),
+    marginBottom: theme.spacing(1),
+    fontWeight: 500,
+    fontSize: '0.85rem',
+    color: theme.palette.grey[300],
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+}));
+
+const StyledSelect = styled(Select<string | number>)(({ theme }) => ({
+    fontSize: '0.85rem',
+    color: theme.palette.common.white,
+    '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+    },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+        borderColor: '#4fc3f7',
+    },
+    '& .MuiSelect-icon': {
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+}));
 
 const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     isOpen,
@@ -189,15 +238,30 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     return (
         <PanelContainer>
             <Header>
-                <Typography variant="h6" fontWeight="bold">Drone Position Control</Typography>
-                <IconButton onClick={onClose} size="small" sx={{ color: 'white' }}>
-                    <CloseIcon />
+                <Typography 
+                    variant="subtitle1" 
+                    sx={{
+                        fontWeight: 500,
+                        fontSize: '0.95rem',
+                        letterSpacing: '0.3px',
+                        textTransform: 'uppercase'
+                    }}
+                >
+                    Drone Position Control
+                </Typography>
+                <IconButton 
+                    onClick={onClose} 
+                    size="small" 
+                    sx={{ color: 'rgba(255,255,255,0.7)' }}
+                >
+                    <CloseIcon fontSize="small" />
                 </IconButton>
             </Header>
 
             {/* Position Controls - Sliders control METERS, display FEET */}
+            <SectionTitle variant="subtitle2">Position Controls</SectionTitle>
             <ControlRow>
-                <SliderLabel>X Position (Left/Right)</SliderLabel>
+                <SliderLabel>X Position (East/West)</SliderLabel>
                 <StyledSlider
                     value={position.x} // Meter value
                     onChange={(_, value) => handleSliderChange('x', value)}
@@ -207,11 +271,11 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     step={0.1} // Meter step
                     valueLabelDisplay="auto"
                 />
-                <ValueDisplay>{metersToFeet(position.x).toFixed(1)}ft</ValueDisplay> {/* Display feet */}
+                <ValueDisplay>{metersToFeet(position.x).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
             </ControlRow>
 
             <ControlRow>
-                <SliderLabel>Y Position (Forward/Back)</SliderLabel>
+                <SliderLabel>Y Position (North/South)</SliderLabel>
                 <StyledSlider
                     value={position.y} // Meter value
                     onChange={(_, value) => handleSliderChange('y', value)}
@@ -221,7 +285,7 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     step={0.1} // Meter step
                     valueLabelDisplay="auto"
                 />
-                <ValueDisplay>{metersToFeet(position.y).toFixed(1)}ft</ValueDisplay> {/* Display feet */}
+                <ValueDisplay>{metersToFeet(position.y).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
             </ControlRow>
 
             <ControlRow>
@@ -235,46 +299,79 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     step={0.1} // Meter step
                     valueLabelDisplay="auto"
                 />
-                <ValueDisplay>{metersToFeet(position.z).toFixed(1)}ft</ValueDisplay> {/* Display feet */}
+                <ValueDisplay>{metersToFeet(position.z).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
             </ControlRow>
 
-            <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.2)' }} />
+            <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
 
             {/* Toggle Controls */}
+            <SectionTitle variant="subtitle2">Camera Settings</SectionTitle>
             <FormControlLabel
                 control={
                     <StyledSwitch
                         checked={cameraFollows}
                         onChange={(e, checked) => handleSwitchChange(e, checked)}
                         name="cameraFollows"
+                        size="small"
                     />
                 }
-                label={<Typography sx={{ fontSize: '0.9rem' }}>Camera Follows Drone</Typography>}
+                label={
+                    <Typography sx={{ fontSize: '0.85rem', color: '#ddd' }}>
+                        Camera Follows Drone
+                    </Typography>
+                }
+                sx={{ marginLeft: 0, marginBottom: 1 }}
             />
-             <Typography variant="caption" sx={{ color: theme => theme.palette.grey[500], pl: 4 }}>
+            <Typography 
+                variant="caption" 
+                sx={{ 
+                    color: 'rgba(255, 255, 255, 0.5)', 
+                    pl: 4, 
+                    fontSize: '0.75rem',
+                    display: 'block',
+                    mb: 1 
+                }}
+            >
                 Centers view on drone but allows manual camera control
-             </Typography>
+            </Typography>
 
-            <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.2)' }} />
+            <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
 
             {/* Camera Settings */}
-            <SectionTitle variant="subtitle1">Camera Settings</SectionTitle>
+            <SectionTitle variant="subtitle2">Camera Parameters</SectionTitle>
             <Box sx={{ display: 'flex', gap: 2 }}>
                 <Box sx={{ flex: 1 }}>
-                    <Typography variant="caption" display="block" gutterBottom>F-Stop</Typography>
-                    <Select
+                    <Typography 
+                        variant="caption" 
+                        display="block" 
+                        gutterBottom 
+                        sx={{ 
+                            fontSize: '0.75rem', 
+                            color: '#ddd',
+                            mb: 0.5
+                        }}
+                    >
+                        F-Stop
+                    </Typography>
+                    <StyledSelect
                         value={cameraSettings.fStop}
                         onChange={(e) => handleCameraSettingChange(e, 'fStop')}
                         size="small"
                         fullWidth
-                        sx={{ 
-                            backgroundColor: 'rgba(80, 80, 80, 0.7)',
-                            color: 'white',
-                            '& .MuiSelect-icon': { color: 'white' },
-                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.3)' },
-                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' },
-                         }}
-                        MenuProps={{ PaperProps: { sx: { backgroundColor: '#333', color: 'white' } } }}
+                        MenuProps={{ 
+                            PaperProps: { 
+                                sx: { 
+                                    backgroundColor: 'rgba(21, 21, 21, 0.97)', 
+                                    color: 'white',
+                                    '& .MuiMenuItem-root': {
+                                        fontSize: '0.85rem',
+                                    },
+                                    '& .MuiMenuItem-root:hover': {
+                                        backgroundColor: 'rgba(60, 60, 60, 0.9)',
+                                    }
+                                } 
+                            } 
+                        }}
                     >
                         {/* Placeholder values - should be dynamic based on available lens */}
                         <MenuItem value={1.4}>f/1.4</MenuItem>
@@ -286,10 +383,21 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                         <MenuItem value={11}>f/11</MenuItem>
                         <MenuItem value={16}>f/16</MenuItem>
                         <MenuItem value={22}>f/22</MenuItem>
-                    </Select>
+                    </StyledSelect>
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                    <Typography variant="caption" display="block" gutterBottom>Focus Distance (ft)</Typography> {/* Updated label */}
+                    <Typography 
+                        variant="caption" 
+                        display="block" 
+                        gutterBottom 
+                        sx={{ 
+                            fontSize: '0.75rem', 
+                            color: '#ddd',
+                            mb: 0.5
+                        }}
+                    >
+                        Focus Distance (ft)
+                    </Typography>
                     <TextField
                         value={cameraSettings.focusDistance.toFixed(1)} // Display feet from local state
                         onChange={(e) => handleCameraSettingChange(e, 'focusDistance')}
@@ -298,20 +406,28 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                         fullWidth
                         InputProps={{
                             inputProps: { min: 0.3, step: 0.1 }, // Example constraints in FEET (0.3ft ~ 0.1m)
-                            sx: { color: 'white' }
+                            sx: { 
+                                color: 'white',
+                                fontSize: '0.85rem',
+                            }
                         }}
                         sx={{ 
-                            backgroundColor: 'rgba(80, 80, 80, 0.7)',
                             '& .MuiOutlinedInput-root': {
-                                '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
-                                '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
-                                '&.Mui-focused fieldset': { borderColor: 'white' }, 
-                              },
-                         }}
+                                backgroundColor: 'rgba(40, 40, 40, 0.9)',
+                                '& fieldset': { 
+                                    borderColor: 'rgba(255, 255, 255, 0.2)' 
+                                },
+                                '&:hover fieldset': { 
+                                    borderColor: 'rgba(255, 255, 255, 0.3)' 
+                                },
+                                '&.Mui-focused fieldset': { 
+                                    borderColor: '#4fc3f7' 
+                                }, 
+                            },
+                        }}
                     />
                 </Box>
             </Box>
-
         </PanelContainer>
     );
 };

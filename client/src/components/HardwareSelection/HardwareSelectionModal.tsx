@@ -1,10 +1,9 @@
 import React from 'react';
-import { Modal, Box, Typography, IconButton } from '@mui/material';
+import { Modal, Box, Typography, IconButton, Button } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import HardwareForm from './HardwareForm';
 import VisualizationTabs from './VisualizationTabs';
 import DofControls from './DofControls';
-import InfoPanel from './InfoPanel';
 
 interface HardwareSelectionModalProps {
     open: boolean;
@@ -17,13 +16,13 @@ const style = {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: '90vw', // Start with a wide view
-    maxWidth: '1400px', // Limit max width
-    height: '90vh', // Start with a tall view
-    maxHeight: '1000px', // Limit max height
-    bgcolor: 'background.paper',
-    border: '1px solid #000',
-    boxShadow: 24,
+    width: '95vw', // Increase from 90vw to 95vw
+    maxWidth: '1800px', // Increase from 1400px to 1800px
+    height: '95vh', // Increase from 90vh to 95vh
+    maxHeight: '1200px', // Increase from 1000px to 1200px
+    bgcolor: '#111111', // Darker background
+    border: '1px solid #222222', // Darker border
+    boxShadow: '0px 10px 20px rgba(0, 0, 0, 0.5)', // Deeper shadow
     p: 0, // No padding on the Box itself, handle inside
     display: 'flex',
     flexDirection: 'column',
@@ -45,14 +44,14 @@ const HardwareSelectionModal: React.FC<HardwareSelectionModalProps> = ({ open, o
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
-                    borderBottom: 1, 
-                    borderColor: 'divider',
+                    borderBottom: '1px solid #222222', // Darker border
+                    bgcolor: '#0a0a0a', // Even darker header
                     flexShrink: 0 // Prevent header from shrinking
                 }}>
-                    <Typography id="hardware-selection-modal-title" variant="h6" component="h2">
+                    <Typography id="hardware-selection-modal-title" variant="h6" component="h2" sx={{ color: 'rgba(255, 255, 255, 0.95)' }}>
                         Mission Hardware Configuration
                     </Typography>
-                    <IconButton onClick={onClose} aria-label="close">
+                    <IconButton onClick={onClose} aria-label="close" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
                         <CloseIcon />
                     </IconButton>
                 </Box>
@@ -63,60 +62,57 @@ const HardwareSelectionModal: React.FC<HardwareSelectionModalProps> = ({ open, o
                     overflow: 'hidden', // Prevent overall content overflow
                     p: 2, 
                     display: 'flex', // Use flex for the main content layout
-                    gap: 2 // Add gap between flex items
+                    gap: 3, // Increase gap from 2 to 3 for more space between panels
+                    bgcolor: '#111111' // Darker main area
                 }}>
-                    {/* Left Panel: Form */}
+                    {/* Left Panel: Form - Increase width */}
                     <Box sx={{ 
-                        width: '35%', // Allocate width for the form panel
-                        minWidth: '300px', // Ensure minimum width
+                        width: '38%', // Increase width from 35% to 38%
+                        minWidth: '380px', // Increase from 300px to 380px
                         height: '100%', 
-                        overflowY: 'auto', // Allow form to scroll if needed
-                        pr: 1 // Add some padding to the right
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'auto', // Allow scrolling only if needed
+                        pr: 1, // Add some padding to the right
+                        bgcolor: '#0e0e0e', // Darker form background
+                        borderRadius: 1,
+                        border: '1px solid #222222' // Subtle border
                     }}>
-                        <HardwareForm onSaveSuccess={onConfirm} />
+                        <HardwareForm onSaveSuccess={onClose} />
                     </Box>
 
-                    {/* Right Panel: Visualization & Info */}
+                    {/* Right Panel: Visualization & Controls */}
                     <Box sx={{ 
                         flexGrow: 1, // Allow this panel to take remaining space
                         height: '100%', 
                         display: 'flex', 
-                        flexDirection: 'column' 
+                        flexDirection: 'column',
+                        bgcolor: '#0e0e0e', // Darker right panel
+                        borderRadius: 1,
+                        border: '1px solid #222222' // Subtle border
                     }}> 
                         {/* Visualization Area - Now using VisualizationTabs */}
                         <Box sx={{ 
                             flexGrow: 1, 
-                            mb: 2, 
                             borderRadius: 1, 
                             overflow: 'hidden' // Hide overflow from tabs/content
                         }}>
                            <VisualizationTabs />
                         </Box>
-                        {/* Info/Controls Area - Now using DofControls and InfoPanel */}
+                        
+                        {/* User Controls Area - Only aperture and object distance */}
                         <Box sx={{ 
-                            flexShrink: 0, // Prevent shrinking
-                            height: '250px', // Fixed height
-                            bgcolor: 'background.paper', // Use paper background like tabs
-                            borderRadius: 1, 
-                            p: 0, // Remove parent padding, handled by children
-                            overflow: 'hidden', // Hide internal overflow
-                            display: 'flex', // Use flex to split controls and info
-                            flexDirection: 'column' // Stack controls on top of info
+                            flexShrink: 0,
+                            mt: 2,
+                            p: 2,
+                            bgcolor: '#0a0a0a', // Darker control area
+                            borderRadius: 1,
+                            borderTop: '1px solid #222222' // Darker border
                         }}>
-                           <DofControls />
-                           <Box sx={{ flexGrow: 1, overflowY: 'auto', borderTop: 1, borderColor: 'divider' }}>
-                               <InfoPanel />
-                           </Box>
+                            <DofControls simplified={true} />
                         </Box>
                     </Box>
                 </Box>
-                
-                 {/* Footer Removed - Save button is in the form */}
-                 {/* 
-                 <Box sx={{ ... }}>
-                    <Typography variant="caption">Footer Actions (e.g., Save) can go here</Typography>
-                 </Box>
-                 */}
             </Box>
         </Modal>
     );

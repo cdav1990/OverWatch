@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom'; // Keep Outlet for potential future nested views if needed, but not used for steps now
 import {
     Box,
@@ -70,8 +70,8 @@ import { SelectChangeEvent } from '@mui/material/Select'; // <-- Add SelectChang
 import { cameras, lenses, droneModels, getCameraById, getLensById, getDroneModelById, getCompatibleLenses, getLensFStops } from '../../utils/hardwareDatabase'; // <-- Import hardware data & getLensFStops
 import { feetToMeters, metersToFeet } from '../../utils/sensorCalculations'; // <-- Import conversions
 
-const leftPaneWidth = 320; // Adjust width as needed
-const bottomPanelHeight = '250px'; // Define height for reuse
+const leftPaneWidth = 450; // Keep defined width
+const bottomPanelHeight = '350px'; // INCREASED height by 100px
 
 // Define options for new dropdowns
 const SHUTTER_SPEED_OPTIONS = [ "1/8000", "1/4000", "1/2000", "1/1000", "1/500", "1/250", "1/125", "1/60", "1/30", "1/15", "1/8", "1/4", "1/2", "1" ];
@@ -79,18 +79,33 @@ const ISO_OPTIONS = [ 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800 ];
 
 const MissionPlanningLayout: React.FC = () => {
     const { state: missionState, dispatch: missionDispatch } = useMission();
-    const { activeControlPane, isSimulating, sceneSettings, currentMission /* other state */ } = missionState;
-    const { mode, setThemeMode } = useThemeContext(); // Use setThemeMode instead of toggleTheme
-    const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(false); // Add state for bottom panel
-    const [activeTabIndex, setActiveTabIndex] = useState(0); // State for active tab
-    const [isHardwareModalOpen, setIsHardwareModalOpen] = useState(false); // <-- Add state for hardware modal
+    const { activeControlPane, isSimulating, sceneSettings, currentMission } = missionState;
+    const { mode, setThemeMode } = useThemeContext();
+    const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(false);
+    const [activeTabIndex, setActiveTabIndex] = useState(0);
+    const [isHardwareModalOpen, setIsHardwareModalOpen] = useState(false);
+    const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
 
+    // Default pane is set by initial state in context, no useEffect needed now
+
+    // REVISED handler for ToggleButtonGroup
     const handlePaneChange = (
         event: React.MouseEvent<HTMLElement>,
-        newPane: 'pre-checks' | 'build-scene' | 'raster-pattern' | null,
+        newPane: 'pre-checks' | 'build-scene' | 'raster-pattern' | null, // MUI provides null if deselected
     ) => {
-        if (newPane !== null) {
+        const currentPane = missionState.activeControlPane; // Get current state value
+
+        if (newPane === null) {
+            // Clicked the active button again
+            setIsLeftPanelOpen(false);
+            // DO NOT dispatch here, keep the activeControlPane state as is
+        } else if (newPane !== currentPane) {
+            // Clicked a different button
+            setIsLeftPanelOpen(true); // Ensure panel is open
             missionDispatch({ type: 'SET_ACTIVE_CONTROL_PANE', payload: newPane });
+        } else {
+             // Clicked the current button when the panel was closed
+             setIsLeftPanelOpen(true);
         }
     };
 
@@ -101,6 +116,7 @@ const MissionPlanningLayout: React.FC = () => {
     // Function to open the hardware modal
     const handleOpenHardwareModal = () => {
         setIsHardwareModalOpen(true);
+        // Keep hardware modal opening separate from left panel visibility toggle
     };
 
     // Function to close the hardware modal
@@ -108,7 +124,7 @@ const MissionPlanningLayout: React.FC = () => {
         setIsHardwareModalOpen(false);
     };
 
-    // --- Handlers for inline hardware edits ---
+    // --- Handlers for inline hardware edits --- FIX Field Names
     const handleHardwareFieldChange = (field: keyof HardwareState, value: any) => {
         missionDispatch({
             type: 'UPDATE_HARDWARE_FIELD',
@@ -122,9 +138,9 @@ const MissionPlanningLayout: React.FC = () => {
         handleHardwareFieldChange(field, value);
     };
 
-    const handleSliderChange = (field: 'fStop' | 'focusDistance', event: Event, value: number | number[]) => {
+    const handleSliderChange = (field: 'focusDistance', event: Event | React.SyntheticEvent<Element, Event>, value: number | number[]) => {
         // For focus distance, convert feet back to meters before dispatching
-        const dispatchValue = field === 'focusDistance' ? feetToMeters(value as number) : value as number;
+        const dispatchValue = feetToMeters(value as number);
         handleHardwareFieldChange(field, dispatchValue);
     };
     // --- End Handlers ---
@@ -192,6 +208,11 @@ const MissionPlanningLayout: React.FC = () => {
         });
     };
 
+    // Calculate these outside the JSX for clarity
+    const compatibleLenses = getCompatibleLenses(missionState.hardware?.camera ?? null);
+    const availableFStops = getLensFStops(missionState.hardware?.lensDetails ?? undefined);
+    const focusDistanceFt = metersToFeet(missionState.hardware?.focusDistance ?? 10);
+
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}>
             <CssBaseline />
@@ -200,8 +221,8 @@ const MissionPlanningLayout: React.FC = () => {
                 elevation={1} 
                 sx={{ 
                     zIndex: (theme) => theme.zIndex.appBar - 1, 
-                    backgroundColor: 'background.paper',
-                    borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                    backgroundColor: 'rgba(21, 21, 21, 0.97)',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
                     flexShrink: 0
                 }}
             >
@@ -213,46 +234,125 @@ const MissionPlanningLayout: React.FC = () => {
                             exclusive
                             onChange={handlePaneChange}
                             aria-label="Control Pane Selection"
-                            size="small"
+                            sx={{
+                                '& .MuiToggleButton-root': {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    borderColor: 'rgba(255, 255, 255, 0.12)',
+                                    textTransform: 'none',
+                                    fontSize: '0.85rem',
+                                    py: 0.75,
+                                    '&.Mui-selected': {
+                                        backgroundColor: 'rgba(79, 195, 247, 0.15)',
+                                        color: '#4fc3f7',
+                                        borderColor: 'rgba(79, 195, 247, 0.5)',
+                                    },
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                    },
+                                }
+                            }}
                         >
                             <ToggleButton value="pre-checks" aria-label="Pre-Checks">
-                                <FlightTakeoffIcon sx={{ mr: 0.5 }} fontSize="small"/> Pre-Checks
+                                <FlightTakeoffIcon sx={{ mr: 0.5, fontSize: '1rem' }}/> Pre-Checks
                             </ToggleButton>
                             <ToggleButton value="build-scene" aria-label="Build Scene">
-                                <CategoryIcon sx={{ mr: 0.5 }} fontSize="small"/> Build Scene
+                                <CategoryIcon sx={{ mr: 0.5, fontSize: '1rem' }}/> Build Scene
                             </ToggleButton>
-                            <ToggleButton value="raster-pattern" aria-label="Raster Pattern Controls">
-                                <RouteIcon sx={{ mr: 0.5 }} fontSize="small"/> Controls
+                            {/* RENAMED Controls to Mission Tools */}
+                            <ToggleButton value="raster-pattern" aria-label="Mission Tools">
+                                <RouteIcon sx={{ mr: 0.5, fontSize: '1rem' }}/> Mission Tools
                             </ToggleButton>
                         </ToggleButtonGroup>
-                        {/* Separate Button for Hardware Modal */}
+                        
+                        {/* Hardware Button in toolbar */}
                         <Button 
-                            variant="outlined" 
-                            size="small" 
-                            startIcon={<CameraIcon fontSize="small"/>} 
+                            startIcon={<CameraIcon sx={{ fontSize: '1rem' }}/>} 
                             onClick={handleOpenHardwareModal}
-                            sx={{ ml: 1 }} // Add some margin if needed
+                            sx={{ 
+                                textTransform: 'none',
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                fontSize: '0.85rem',
+                                px: 1.5,
+                                py: 0.75,
+                                ml: 1,
+                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                borderRadius: 1,
+                                '&:hover': {
+                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                                }
+                            }}
                         >
                             Hardware
                         </Button>
                     </Stack>
                     
                     {/* Right side: Advanced Toggle, Simulation/Live Toggles */}
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1.5} alignItems="center"> {/* Increased spacing slightly */}
                         {/* Theme Toggle Switch */}
                         <FormControlLabel
-                            control={<Switch checked={mode === 'dark' || mode === 'gecko'} onChange={handleThemeChange} size="small" />}
-                            label={<Typography variant="caption">{mode === 'light' ? 'Light' : 'Dark'}</Typography>}
+                            control={
+                                <Switch 
+                                    checked={mode === 'dark' || mode === 'gecko'} 
+                                    onChange={handleThemeChange} 
+                                    size="small"
+                                    sx={{
+                                        '& .MuiSwitch-switchBase.Mui-checked': {
+                                            color: '#4fc3f7',
+                                            '& + .MuiSwitch-track': {
+                                                backgroundColor: 'rgba(79, 195, 247, 0.6)',
+                                            },
+                                        },
+                                    }}
+                                />
+                            }
+                            label={<Typography sx={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)' }}>{mode === 'light' ? 'Light' : 'Dark'}</Typography>}
                             sx={{ mr: 1 }}
                         />
                          {/* Add Gear Icon Button */}
-                         <IconButton onClick={toggleBottomPanel} size="small" title="Toggle Advanced Panel">
-                             <SettingsIcon />
+                         <IconButton 
+                            onClick={toggleBottomPanel} 
+                            size="small" 
+                            title="Toggle Advanced Panel"
+                            sx={{ 
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                '&:hover': {
+                                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                                }
+                            }}
+                        >
+                             <SettingsIcon fontSize="small" />
                          </IconButton>
-                         <Button variant="outlined" size="small" startIcon={<PlayCircleOutlineIcon />}>
+                         <Button 
+                            variant="outlined" 
+                            startIcon={<PlayCircleOutlineIcon />}
+                            sx={{ 
+                                color: '#4fc3f7',
+                                borderColor: 'rgba(79, 195, 247, 0.5)',
+                                textTransform: 'none',
+                                fontSize: '0.85rem',
+                                '&:hover': {
+                                    borderColor: '#4fc3f7',
+                                    backgroundColor: 'rgba(79, 195, 247, 0.08)',
+                                }
+                            }}
+                        >
                              Simulate
                          </Button>
-                         <Button variant="outlined" size="small" startIcon={<SensorsIcon />}>
+                         <Button 
+                            variant="outlined" 
+                            startIcon={<SensorsIcon />}
+                            sx={{ 
+                                color: '#ff3366',
+                                borderColor: 'rgba(255, 51, 102, 0.5)',
+                                textTransform: 'none',
+                                fontSize: '0.85rem',
+                                '&:hover': {
+                                    borderColor: '#ff3366',
+                                    backgroundColor: 'rgba(255, 51, 102, 0.08)',
+                                }
+                            }}
+                        >
                              Live
                          </Button>
                     </Stack>
@@ -262,179 +362,324 @@ const MissionPlanningLayout: React.FC = () => {
             {/* Main Content Area - Flex row, grows to fill space */}
             <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}> 
                 
-                {/* Left Pane */}
+                {/* Left Pane - MODIFIED for collapse animation */}
                 <Box
+                    component={Paper} // Use Paper directly for elevation and background
+                    square
+                    elevation={0} // No shadow needed if using border
                     sx={{
-                        width: leftPaneWidth,
+                        width: isLeftPanelOpen ? leftPaneWidth : 0, // Animate width
                         flexShrink: 0,
-                        borderRight: (theme) => `1px solid ${theme.palette.divider}`,
-                        overflowY: 'auto',
-                        height: '100%',
-                        display: 'flex', // Use flex column
-                        flexDirection: 'column' // Stack children vertically
+                        backgroundColor: 'rgba(21, 21, 21, 0.97)',
+                        borderRight: isLeftPanelOpen ? '1px solid rgba(255, 255, 255, 0.08)' : 'none', // Conditional border
+                        overflow: 'hidden', // Hide content when collapsing
+                        height: '100%', 
+                        display: 'flex', 
+                        flexDirection: 'column',
+                        transition: (theme) => theme.transitions.create('width', { // Add transition
+                            easing: theme.transitions.easing.sharp,
+                            duration: theme.transitions.duration.leavingScreen, // Use leavingScreen duration
+                        }),
+                        // Ensure content doesn't wrap when collapsing
+                        whiteSpace: 'nowrap' 
                     }}
                 >
-                    {/* Existing Step/Control Panes (occupy available space) */}
-                    <Box sx={{ flexGrow: 1, p: 2 }}>
-                        {activeControlPane === 'pre-checks' && <MissionPreChecksStep />}
-                        {activeControlPane === 'build-scene' && (
-                            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                                <BuildSceneStep />
-                            </Box>
-                        )}
-                        {activeControlPane === 'raster-pattern' && <RasterPatternStep />}
+                    {/* Step/Control Content Area - Add check for activeControlPane */}
+                    <Box sx={{ flexGrow: 1, p: isLeftPanelOpen ? 2 : 0, overflowY: 'auto' }}> {/* Conditional padding */}
+                        {/* Only render content if pane is active and open */}
+                        {isLeftPanelOpen && activeControlPane === 'pre-checks' && <MissionPreChecksStep />} 
+                        {isLeftPanelOpen && activeControlPane === 'build-scene' && <BuildSceneStep />} 
+                        {isLeftPanelOpen && activeControlPane === 'raster-pattern' && <RasterPatternStep />} 
                     </Box>
                     
-                    <Divider />
-
-                    {/* --- Re-enable Accordion structure with static content --- */}
+                    {/* Hardware Button at bottom of left panel - only show if panel is open */}
+                    {isLeftPanelOpen && (
+                        <Box sx={{ 
+                            mt: 'auto', 
+                            p: 2, 
+                            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                            backgroundColor: 'rgba(21, 21, 21, 0.9)'
+                        }}>
+                            <Button 
+                                variant="outlined"
+                                fullWidth
+                                startIcon={<CameraIcon />} 
+                                onClick={handleOpenHardwareModal}
+                                sx={{ 
+                                    textTransform: 'none',
+                                    color: '#4fc3f7',
+                                    borderColor: 'rgba(79, 195, 247, 0.5)',
+                                    py: 1,
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(79, 195, 247, 0.08)',
+                                        borderColor: 'rgba(79, 195, 247, 0.8)',
+                                    }
+                                }}
+                            >
+                                Configure Hardware
+                            </Button>
+                        </Box>
+                    )}
                     
-                    {missionState.hardware && (
-                        <Accordion defaultExpanded sx={{ flexShrink: 0, borderTop: 1, borderColor: 'divider', m: 0 }}> 
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
+                    {/* Hardware Accordion - only show if panel is open */}
+                    {isLeftPanelOpen && missionState.hardware && (
+                         <Accordion 
+                            sx={{ 
+                                flexShrink: 0, 
+                                backgroundColor: 'transparent',
+                                borderTop: '1px solid rgba(255, 255, 255, 0.08)', 
+                                m: 0,
+                                '&::before': {
+                                    display: 'none', // Remove default accordion divider
+                                },
+                                '& .MuiAccordionSummary-root': {
+                                    backgroundColor: 'rgba(30, 30, 30, 0.6)',
+                                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                                    minHeight: '48px',
+                                },
+                                '& .MuiAccordionSummary-content': {
+                                    margin: '8px 0',
+                                },
+                                '& .MuiAccordionDetails-root': {
+                                    backgroundColor: 'rgba(25, 25, 25, 0.7)',
+                                    padding: '12px',
+                                },
+                            }}
+                        >
+                             <AccordionSummary
+                                expandIcon={<ExpandMoreIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />}
                                 aria-controls="hardware-panel-content"
                                 id="hardware-panel-header"
                             >
-                                <Typography variant="subtitle2">Hardware Configuration</Typography>
+                                <Typography 
+                                    variant="subtitle2" 
+                                    sx={{ 
+                                        fontSize: '0.85rem',
+                                        fontWeight: 500,
+                                        color: 'rgba(255, 255, 255, 0.9)',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                    }}
+                                >
+                                    Hardware Configuration
+                                </Typography>
                             </AccordionSummary>
-                            <AccordionDetails sx={{ pt: 0, pb: 1, px: 2 }}> 
-                                
-                                <Stack spacing={2}> 
-                                    {/* --- Drone Select (Working) --- */}
-                                    <FormControl fullWidth size="small">
-                                        <InputLabel id="acc-drone-label">Drone</InputLabel>
-                                        <Select
-                                            labelId="acc-drone-label"
-                                            value={missionState.hardware.drone || ''}
-                                            label="Drone"
-                                            onChange={(e) => handleHardwareSelectChange('drone', e)}
+                            <AccordionDetails sx={{ p: 1.5 }}> {/* Reduced padding slightly */}
+                                <Stack spacing={1.5}>
+                                     {/* Drone Model Select - Use 'drone' field */}
+                                     <FormControl fullWidth size="small" variant="outlined" sx={{ minWidth: 120 }}>
+                                         <InputLabel 
+                                            id="drone-model-label" 
+                                            sx={{ 
+                                                color: 'rgba(255, 255, 255, 0.5)',
+                                                fontSize: '0.8rem',
+                                                '&.Mui-focused': {
+                                                    color: '#4fc3f7'
+                                                }
+                                            }}
                                         >
-                                            {droneModels.map((drone) => (
-                                                <MenuItem key={drone.id} value={drone.id}>
-                                                    {drone.brand} {drone.name}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
+                                            Drone
+                                        </InputLabel>
+                                         <Select
+                                             labelId="drone-model-label"
+                                             value={missionState.hardware.drone ?? ''}
+                                             label="Drone"
+                                             onChange={(e) => handleHardwareFieldChange('drone', e.target.value)}
+                                             sx={{
+                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                fontSize: '0.85rem',
+                                                '& .MuiOutlinedInput-notchedOutline': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.15)'
+                                                },
+                                                '&:hover .MuiOutlinedInput-notchedOutline': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                                                },
+                                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                                                    borderColor: '#4fc3f7'
+                                                },
+                                                '& .MuiSelect-icon': {
+                                                    color: 'rgba(255, 255, 255, 0.5)'
+                                                }
+                                             }}
+                                             MenuProps={{
+                                                PaperProps: {
+                                                    sx: {
+                                                        bgcolor: 'rgba(21, 21, 21, 0.97)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                        boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
+                                                        '& .MuiMenuItem-root': {
+                                                            color: 'rgba(255, 255, 255, 0.9)',
+                                                            fontSize: '0.85rem',
+                                                            '&:hover': {
+                                                                backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                                                            },
+                                                            '&.Mui-selected': {
+                                                                backgroundColor: 'rgba(79, 195, 247, 0.15)',
+                                                                color: '#4fc3f7'
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }}
+                                         >
+                                             <MenuItem value=""><em>Select Drone...</em></MenuItem>
+                                             {droneModels.map(drone => (
+                                                 <MenuItem key={drone.id} value={drone.id}>{`${drone.brand} ${drone.name}`}</MenuItem>
+                                             ))}
+                                         </Select>
+                                     </FormControl>
+
+                                     {/* Camera Select - Use 'camera' field */}
+                                      <FormControl fullWidth size="small" variant="outlined" sx={{ minWidth: 120 }}>
+                                          <InputLabel 
+                                            id="camera-model-label"
+                                            sx={{ 
+                                                color: 'rgba(255, 255, 255, 0.5)',
+                                                fontSize: '0.8rem',
+                                                '&.Mui-focused': {
+                                                    color: '#4fc3f7'
+                                                }
+                                            }}
+                                          >
+                                            Camera
+                                          </InputLabel>
+                                          <Select
+                                              labelId="camera-model-label"
+                                              value={missionState.hardware.camera ?? ''}
+                                              label="Camera"
+                                              onChange={(e) => handleHardwareFieldChange('camera', e.target.value)}
+                                              sx={{
+                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                fontSize: '0.85rem',
+                                                '& .MuiOutlinedInput-notchedOutline': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.15)'
+                                                },
+                                                '&:hover .MuiOutlinedInput-notchedOutline': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                                                },
+                                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                                                    borderColor: '#4fc3f7'
+                                                },
+                                                '& .MuiSelect-icon': {
+                                                    color: 'rgba(255, 255, 255, 0.5)'
+                                                }
+                                             }}
+                                             MenuProps={{
+                                                PaperProps: {
+                                                    sx: {
+                                                        bgcolor: 'rgba(21, 21, 21, 0.97)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                        boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
+                                                        '& .MuiMenuItem-root': {
+                                                            color: 'rgba(255, 255, 255, 0.9)',
+                                                            fontSize: '0.85rem',
+                                                            '&:hover': {
+                                                                backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                                                            },
+                                                            '&.Mui-selected': {
+                                                                backgroundColor: 'rgba(79, 195, 247, 0.15)',
+                                                                color: '#4fc3f7'
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }}
+                                          >
+                                             <MenuItem value=""><em>Select Camera...</em></MenuItem>
+                                             {cameras.map(camera => (
+                                                 <MenuItem key={camera.id} value={camera.id}>{`${camera.brand} ${camera.model} (${camera.megapixels}MP)`}</MenuItem>
+                                             ))}
+                                         </Select>
+                                      </FormControl>
+                                     
+                                      {/* Lens Select - Use 'lens' field, check hardware.camera */}
+                                      <FormControl fullWidth size="small" disabled={!missionState.hardware.camera}>
+                                         <InputLabel id="lens-model-label">Lens</InputLabel>
+                                         <Select
+                                             labelId="lens-model-label"
+                                             value={missionState.hardware.lens ?? ''}
+                                             label="Lens"
+                                             onChange={(e) => handleHardwareFieldChange('lens', e.target.value)}
+                                         >
+                                             <MenuItem value=""><em>Select Lens...</em></MenuItem>
+                                             {/* Pass hardware.camera to getCompatibleLenses */}
+                                             {compatibleLenses.map(lens => (
+                                                 <MenuItem key={lens.id} value={lens.id}>{`${lens.brand} ${lens.model}`}</MenuItem>
+                                             ))}
+                                         </Select>
+                                      </FormControl>
+
+                                     {/* Aperture (f-stop) Select - Use 'fStop' field */}
+                                     <FormControl fullWidth size="small" disabled={!missionState.hardware.lensDetails}>
+                                         <InputLabel id="aperture-label">Aperture (f/)</InputLabel>
+                                         <Select
+                                             labelId="aperture-label"
+                                             value={missionState.hardware.fStop ?? ''}
+                                             label="Aperture (f/)"
+                                             onChange={(e) => handleHardwareFieldChange('fStop', Number(e.target.value) || null)}
+                                         >
+                                             <MenuItem value=""><em>Select Aperture...</em></MenuItem>
+                                             {/* Use calculated availableFStops */}
+                                             {availableFStops.map(fStop => (
+                                                 <MenuItem key={fStop} value={fStop}>f/{fStop.toFixed(1)}</MenuItem>
+                                             ))}
+                                         </Select>
+                                     </FormControl>
                                     
-                                    {/* --- Camera Select (Working) --- */}
-                                    <FormControl fullWidth size="small">
-                                        <InputLabel id="acc-camera-label">Camera</InputLabel>
-                                        <Select
-                                            labelId="acc-camera-label"
-                                            value={missionState.hardware.camera || ''}
-                                            label="Camera"
-                                            onChange={(e) => handleHardwareSelectChange('camera', e)}
-                                        >
-                                            {cameras.map((camera) => (
-                                                <MenuItem key={camera.id} value={camera.id}>
-                                                    {`${camera.brand} ${camera.model} (${camera.megapixels}MP)`}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
+                                     {/* Shutter Speed Select - Use 'shutterSpeed' field */}
+                                     <FormControl fullWidth size="small">
+                                         <InputLabel id="shutter-speed-label">Shutter Speed (s)</InputLabel>
+                                         <Select
+                                             labelId="shutter-speed-label"
+                                             value={missionState.hardware.shutterSpeed ?? ''}
+                                             label="Shutter Speed (s)"
+                                             onChange={(e) => handleHardwareFieldChange('shutterSpeed', e.target.value)}
+                                         >
+                                             <MenuItem value=""><em>Select Shutter Speed...</em></MenuItem>
+                                             {SHUTTER_SPEED_OPTIONS.map(speed => (
+                                                 <MenuItem key={speed} value={speed}>{speed}</MenuItem>
+                                             ))}
+                                         </Select>
+                                     </FormControl>
 
-                                    {/* --- Re-enable Lens Select --- */}
-                                    <FormControl fullWidth size="small" disabled={!missionState.hardware.camera}>
-                                        <InputLabel id="acc-lens-label">Lens</InputLabel>
-                                        <Select
-                                            labelId="acc-lens-label"
-                                            value={missionState.hardware.lens || ''}
-                                            label="Lens"
-                                            onChange={(e) => handleHardwareSelectChange('lens', e)}
-                                        >
-                                            {/* Safer mapping: Only map if camera ID exists */}
-                                            {missionState.hardware.camera && 
-                                             getCompatibleLenses(missionState.hardware.camera).map((lens) => (
-                                                <MenuItem key={lens.id} value={lens.id}>
-                                                    {`${lens.brand} ${lens.model}`}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                        {missionState.hardware.camera && getCompatibleLenses(missionState.hardware.camera).length === 0 && 
-                                            <Typography variant="caption" color="textSecondary" sx={{mt: 0.5}}>No compatible lenses</Typography>}
-                                    </FormControl>
+                                     {/* ISO Select - Use 'iso' field */}
+                                      <FormControl fullWidth size="small">
+                                          <InputLabel id="iso-label">ISO</InputLabel>
+                                          <Select
+                                              labelId="iso-label"
+                                              value={missionState.hardware.iso ?? ''}
+                                              label="ISO"
+                                              onChange={(e) => handleHardwareFieldChange('iso', Number(e.target.value) || null)}
+                                          >
+                                             <MenuItem value=""><em>Select ISO...</em></MenuItem>
+                                             {ISO_OPTIONS.map(iso => (
+                                                 <MenuItem key={iso} value={iso}>{iso}</MenuItem>
+                                             ))}
+                                         </Select>
+                                      </FormControl>
 
-                                    {/* --- Replace Aperture Slider with Select --- */}
-                                    <FormControl fullWidth size="small" disabled={!missionState.hardware.lensDetails}>
-                                        <InputLabel id="acc-fstop-label">Aperture (f/)</InputLabel>
-                                        <Select
-                                            labelId="acc-fstop-label"
-                                            value={missionState.hardware.fStop || ''} // Use current fStop or empty string
-                                            label="Aperture (f/)"
-                                            onChange={(e) => handleHardwareSelectChange('fStop', e)}
-                                        >
-                                            {(missionState.hardware.lensDetails ? getLensFStops(missionState.hardware.lensDetails) : []).map((fstop) => (
-                                                <MenuItem key={fstop} value={fstop}>
-                                                    f/{fstop.toFixed(1)} {/* Display with f/ prefix */}
-                                                </MenuItem>
-                                            ))}
-                                            {/* Show message if no stops available */} 
-                                            {!missionState.hardware.lensDetails && <MenuItem disabled value="">Select Lens</MenuItem>}
-                                            {missionState.hardware.lensDetails && getLensFStops(missionState.hardware.lensDetails).length === 0 && 
-                                                <MenuItem disabled value="">No defined stops</MenuItem>}
-                                        </Select>
-                                    </FormControl>
-
-                                    {/* --- Add Shutter Speed Select --- */}
-                                    <FormControl fullWidth size="small" disabled={!missionState.hardware.camera}> {/* Often tied to camera */} 
-                                        <InputLabel id="acc-shutter-label">Shutter Speed (s)</InputLabel>
-                                        <Select
-                                            labelId="acc-shutter-label"
-                                            value={missionState.hardware.shutterSpeed || ''}
-                                            label="Shutter Speed (s)"
-                                            onChange={(e) => handleHardwareSelectChange('shutterSpeed', e)}
-                                        >
-                                            {SHUTTER_SPEED_OPTIONS.map((speed) => (
-                                                <MenuItem key={speed} value={speed}>
-                                                    {speed}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-                                    
-                                    {/* --- Add ISO Select --- */}
-                                     <FormControl fullWidth size="small" disabled={!missionState.hardware.camera}> {/* Often tied to camera */} 
-                                        <InputLabel id="acc-iso-label">ISO</InputLabel>
-                                        <Select
-                                            labelId="acc-iso-label"
-                                            value={missionState.hardware.iso || ''} 
-                                            label="ISO"
-                                            onChange={(e) => handleHardwareSelectChange('iso', e)}
-                                        >
-                                            {ISO_OPTIONS.map((isoVal) => (
-                                                <MenuItem key={isoVal} value={isoVal}>
-                                                    {isoVal}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-
-                                    {/* --- Focus Distance Slider --- */}
-                                    <Box>
-                                         <Typography variant="caption" gutterBottom id="acc-focus-dist-slider-label">
-                                            Focus Distance ({metersToFeet(missionState.hardware.focusDistance || 10).toFixed(0)} ft)
-                                        </Typography>
-                                        <Slider
-                                            aria-labelledby="acc-focus-dist-slider-label"
-                                            value={metersToFeet(missionState.hardware.focusDistance || 10)}
-                                            onChange={(e, v) => handleSliderChange('focusDistance', e, v)}
-                                            min={3} // Min focus distance in feet
-                                            max={400} // Max focus distance in feet
-                                            step={1}
-                                            valueLabelDisplay="auto"
-                                            valueLabelFormat={(value) => `${value.toFixed(0)} ft`}
-                                            size="small"
-                                        />
-                                    </Box>
-                                    
-                                </Stack>
-                                
+                                     {/* Focus Distance Slider - Use calculated focusDistanceFt */}
+                                     <Box sx={{ px: 1 }}>
+                                         <Typography variant="caption" id="focus-distance-slider" gutterBottom>
+                                             Focus Distance ({focusDistanceFt.toFixed(1)} ft)
+                                         </Typography>
+                                         <Slider
+                                             aria-labelledby="focus-distance-slider"
+                                             value={focusDistanceFt}
+                                             onChange={(e, newValue) => handleSliderChange('focusDistance', e, newValue as number)}
+                                             min={3}
+                                             max={400}
+                                             step={1}
+                                             size="small"
+                                             valueLabelDisplay="auto"
+                                             valueLabelFormat={(value) => `${value.toFixed(0)} ft`}
+                                             disabled={!missionState.hardware.lensDetails}
+                                         />
+                                     </Box>
+                                 </Stack>
                             </AccordionDetails>
-                        </Accordion>
-                    )}
-                    
+                         </Accordion>
+                     )}
                 </Box>
 
                 {/* Right Main Area - Now a flex column container */}
@@ -466,8 +711,8 @@ const MissionPlanningLayout: React.FC = () => {
                         sx={{ 
                             width: '100%',
                             height: isBottomPanelOpen ? bottomPanelHeight : '0px',
-                            borderTop: (theme) => `1px solid ${theme.palette.divider}`,
-                            backgroundColor: 'background.paper',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                            backgroundColor: 'rgba(21, 21, 21, 0.97)',
                             overflow: 'hidden', 
                             transition: 'height 0.3s ease-in-out', 
                             zIndex: 2,
@@ -476,8 +721,33 @@ const MissionPlanningLayout: React.FC = () => {
                         }}
                     >
                         {/* Tab Navigation */} 
-                        <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
-                            <Tabs value={activeTabIndex} onChange={handleTabChange} aria-label="Advanced Features Tabs">
+                        <Box sx={{ 
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.08)', 
+                            flexShrink: 0,
+                            backgroundColor: 'rgba(25, 25, 25, 0.6)',
+                        }}>
+                            <Tabs 
+                                value={activeTabIndex} 
+                                onChange={handleTabChange} 
+                                aria-label="Advanced Features Tabs"
+                                sx={{
+                                    minHeight: '42px',
+                                    '& .MuiTabs-indicator': {
+                                        backgroundColor: '#4fc3f7'
+                                    },
+                                    '& .MuiTab-root': {
+                                        color: 'rgba(255, 255, 255, 0.6)',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 400,
+                                        textTransform: 'none',
+                                        minHeight: '42px',
+                                        padding: '0 16px',
+                                        '&.Mui-selected': {
+                                            color: '#4fc3f7'
+                                        }
+                                    }
+                                }}
+                            >
                                 <Tab label="Mission Controls" id="tab-0" aria-controls="tabpanel-0" />
                                 <Tab label="Timeline" id="tab-1" aria-controls="tabpanel-1" />
                                 <Tab label="Asset Tree" id="tab-2" aria-controls="tabpanel-2" />
@@ -487,41 +757,159 @@ const MissionPlanningLayout: React.FC = () => {
                         </Box>
 
                         {/* Tab Content Area */} 
-                        <Box sx={{ flexGrow: 1, p: 2, overflowY: 'auto', minHeight: 0 }}> {/* Allow content to scroll */} 
+                        <Box sx={{ 
+                            flexGrow: 1, 
+                            p: 2, 
+                            overflowY: 'auto', 
+                            minHeight: 0,
+                            backgroundColor: 'rgba(25, 25, 25, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.9)'
+                        }}> {/* Allow content to scroll */} 
                             {/* Tab Panel for Mission Controls (index 0) - Rebuilt UI */} 
                             <TabPanel value={activeTabIndex} index={0}>
-                                <Stack spacing={2} divider={<Divider orientation="horizontal" flexItem />}> {/* Use horizontal divider */} 
+                                <Stack spacing={4} divider={<Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)' }} orientation="horizontal" flexItem />}> 
                                     {/* General Controls Section */}
                                     <Box>
-                                        <Typography variant="subtitle2" gutterBottom align="center">General</Typography>
+                                        <Typography 
+                                            variant="subtitle2" 
+                                            gutterBottom 
+                                            align="center"
+                                            sx={{
+                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                fontSize: '0.85rem',
+                                                fontWeight: 500,
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                                mb: 1.5
+                                            }}
+                                        >
+                                            General
+                                        </Typography>
                                         <Stack direction="row" spacing={1} justifyContent="center">
                                             <Tooltip title="Import 3D Model (Placeholder)">
-                                                <IconButton size="small" onClick={importModel}><PublishIcon /></IconButton>
+                                                <IconButton 
+                                                    size="small" 
+                                                    onClick={importModel}
+                                                    sx={{
+                                                        color: 'rgba(255, 255, 255, 0.7)',
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                                            color: '#4fc3f7'
+                                                        }
+                                                    }}
+                                                >
+                                                    <PublishIcon fontSize="small" />
+                                                </IconButton>
                                             </Tooltip>
                                             <Tooltip title="Save Mission (Placeholder)">
-                                                <IconButton size="small" onClick={saveMission}><SaveIcon /></IconButton>
+                                                <IconButton 
+                                                    size="small" 
+                                                    onClick={saveMission}
+                                                    sx={{
+                                                        color: 'rgba(255, 255, 255, 0.7)',
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                                            color: '#4fc3f7'
+                                                        }
+                                                    }}
+                                                >
+                                                    <SaveIcon fontSize="small" />
+                                                </IconButton>
                                             </Tooltip>
                                             <Tooltip title="Delete Selected (Placeholder)">
-                                                <IconButton size="small" onClick={deleteSelected}><DeleteIcon /></IconButton>
+                                                <IconButton 
+                                                    size="small" 
+                                                    onClick={deleteSelected}
+                                                    sx={{
+                                                        color: 'rgba(255, 255, 255, 0.7)',
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(255, 51, 102, 0.15)',
+                                                            color: '#ff3366'
+                                                        }
+                                                    }}
+                                                >
+                                                    <DeleteIcon fontSize="small" />
+                                                </IconButton>
                                             </Tooltip>
                                         </Stack>
                                     </Box>
 
                                     {/* Simulation Controls Section */}
                                     <Box>
-                                        <Typography variant="subtitle2" gutterBottom align="center">Simulation</Typography>
+                                        <Typography 
+                                            variant="subtitle2" 
+                                            gutterBottom 
+                                            align="center"
+                                            sx={{
+                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                fontSize: '0.85rem',
+                                                fontWeight: 500,
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.5px',
+                                                mb: 1.5
+                                            }}
+                                        >
+                                            Simulation
+                                        </Typography>
                                         <Stack direction="row" spacing={1} justifyContent="center">
                                             {!isSimulating ? (
                                                 <Tooltip title="Start Simulation">
-                                                <IconButton size="small" onClick={startSimulation}><PlayArrowIcon /></IconButton>
+                                                <IconButton 
+                                                    size="small" 
+                                                    onClick={startSimulation}
+                                                    sx={{
+                                                        color: 'rgba(255, 255, 255, 0.7)',
+                                                        backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                                                        border: '1px solid rgba(79, 195, 247, 0.3)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(79, 195, 247, 0.2)',
+                                                            color: '#4fc3f7'
+                                                        }
+                                                    }}
+                                                >
+                                                    <PlayArrowIcon fontSize="small" />
+                                                </IconButton>
                                                 </Tooltip>
                                             ) : (
                                                 <Tooltip title="Pause Simulation">
-                                                <IconButton size="small" onClick={pauseSimulation}><PauseIcon /></IconButton>
+                                                <IconButton 
+                                                    size="small" 
+                                                    onClick={pauseSimulation}
+                                                    sx={{
+                                                        color: '#4fc3f7',
+                                                        backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                                                        border: '1px solid rgba(79, 195, 247, 0.3)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(79, 195, 247, 0.2)',
+                                                        }
+                                                    }}
+                                                >
+                                                    <PauseIcon fontSize="small" />
+                                                </IconButton>
                                                 </Tooltip>
                                             )}
                                             <Tooltip title="Reset Simulation (Placeholder)">
-                                                <IconButton size="small" onClick={resetSimulation}><RestartAltIcon /></IconButton>
+                                                <IconButton 
+                                                    size="small" 
+                                                    onClick={resetSimulation}
+                                                    sx={{
+                                                        color: 'rgba(255, 255, 255, 0.7)',
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                                            color: '#4fc3f7'
+                                                        }
+                                                    }}
+                                                >
+                                                    <RestartAltIcon fontSize="small" />
+                                                </IconButton>
                                             </Tooltip>
                                         </Stack>
                                     </Box>

@@ -21,7 +21,7 @@ function TabPanel(props: TabPanelProps) {
       id={`visualization-tabpanel-${index}`}
       aria-labelledby={`visualization-tab-${index}`}
       {...other}
-      style={{ height: '100%', padding: '16px' }} // Add padding and ensure height
+      style={{ height: '100%', padding: '16px', backgroundColor: '#080808' }} // Darker background
     >
       {value === index && (
         <Box sx={{ height: '100%' }}>
@@ -74,12 +74,12 @@ const VisualizationTabs: React.FC = () => {
             height: 0,
             borderLeft: `${width / 2}px solid transparent`,
             borderRight: `${width / 2}px solid transparent`,
-            borderTop: `${height}px solid rgba(255, 179, 0, 0.3)`, // Amber color from theme?
+            borderTop: `${height}px solid rgba(79, 195, 247, 0.3)`, // Use blue theme color
             position: 'absolute' as 'absolute',
             bottom: '60px', // Position below drone image
             left: '50%',
             transform: 'translateX(-50%)',
-            opacity: 0.7
+            opacity: 0.9
         };
     }, [camera, lens, fovDegrees.h]);
 
@@ -89,15 +89,29 @@ const VisualizationTabs: React.FC = () => {
             flexDirection: 'column', 
             height: '100%', 
             width: '100%', 
-            bgcolor: 'background.paper',
+            bgcolor: '#080808', // Darker background
             borderRadius: 1
         }}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ borderBottom: '1px solid #222222' }}>
                 <Tabs 
                     value={activeTab} 
                     onChange={handleTabChange} 
                     aria-label="Visualization view tabs" 
                     variant="fullWidth"
+                    sx={{
+                        minHeight: '40px',
+                        backgroundColor: '#0a0a0a', // Darker tab background
+                        '& .MuiTabs-indicator': {
+                            backgroundColor: '#4fc3f7'
+                        },
+                        '& .MuiTab-root': {
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            minHeight: '40px',
+                            '&.Mui-selected': {
+                                color: '#4fc3f7'
+                            }
+                        }
+                    }}
                 >
                     <Tab label="2D View" {...a11yProps(0)} />
                     <Tab label="3D View" {...a11yProps(1)} />
@@ -112,7 +126,8 @@ const VisualizationTabs: React.FC = () => {
                         alignItems: 'center',
                         justifyContent: 'center',
                         height: '100%',
-                        position: 'relative' // Needed for absolute positioning of FOV
+                        position: 'relative', // Needed for absolute positioning of FOV
+                        backgroundColor: '#050505' // Even darker background
                     }}>
                          {drone?.imageUrl && (
                              <Box 
@@ -123,14 +138,15 @@ const VisualizationTabs: React.FC = () => {
                                     maxHeight: '150px', // Limit drone image size
                                     maxWidth: '80%',
                                     objectFit: 'contain',
-                                    mb: '70px' // Margin to leave space for FOV indicator
+                                    mb: '70px', // Margin to leave space for FOV indicator
+                                    filter: 'drop-shadow(0px 5px 10px rgba(0, 0, 0, 0.5))' // Add shadow for depth
                                 }}
                             />
                          )}
                          {camera && lens ? (
                              <Box sx={fovIndicatorStyle} />
                          ) : (
-                             <Typography variant="caption" color="text.secondary">
+                             <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
                                  Select drone, camera, and lens to see visualization.
                              </Typography>
                          )}
@@ -138,7 +154,7 @@ const VisualizationTabs: React.FC = () => {
                 </TabPanel>
                 <TabPanel value={activeTab} index={1}>
                      {/* Integrate 3D Drone Scene Viewer */}
-                     <Box sx={{ height: '100%', width: '100%' }}> {/* Ensure container takes full space */} 
+                     <Box sx={{ height: '100%', width: '100%', backgroundColor: '#050505' }}> {/* Ensure container takes full space */} 
                         <DroneSceneViewerWrapper />
                      </Box>
                 </TabPanel>

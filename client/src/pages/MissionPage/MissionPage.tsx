@@ -384,7 +384,8 @@ const MissionPageContent: React.FC = () => {
         flexDirection: 'row',
         overflow: 'hidden'
       }}>
-        <Paper elevation={2} sx={{ width: '300px', p: 2, mr: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        {/* This is the left panel */}
+        <Paper elevation={2} sx={{ width: '600px', p: 2, mr: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <Typography variant="h6" gutterBottom>Controls</Typography>
           
           <Box sx={{ border: '1px dashed grey', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>

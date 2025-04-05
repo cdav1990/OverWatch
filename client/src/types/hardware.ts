@@ -1,4 +1,4 @@
-export type SensorType = 'Medium Format' | 'Full Frame' | 'APS-C' | '1-inch' | '1/2-inch';
+export type SensorType = 'Medium Format' | 'Full Frame' | 'APS-C' | 'Micro Four Thirds' | '1-inch' | '1/2-inch';
 
 export interface Camera {
     id: string;

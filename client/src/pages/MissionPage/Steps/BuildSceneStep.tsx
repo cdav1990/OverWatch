@@ -19,128 +19,224 @@ import {
     IconButton, 
     Snackbar, 
     Alert,
-    Tabs,
-    Tab,
     Paper,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
-    Card,
-    CardContent
+    ToggleButton,
+    ToggleButtonGroup,
+    Grid
 } from '@mui/material';
-import AddBoxIcon from '@mui/icons-material/AddBox';
+import { styled } from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
+import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useMission } from '../../../context/MissionContext';
-import { generateUUID } from '../../../utils/coordinateUtils'; // Import UUID generator
+import { generateUUID } from '../../../utils/coordinateUtils';
 import { SceneObject } from '../../../context/MissionContext';
-import { LocalCoord } from '../../../types/mission';
 
-// Tab panel component to handle tab content
-interface TabPanelProps {
-    children?: React.ReactNode;
-    index: number;
-    value: number;
-}
+// Styled components for industrial UI
+const SectionTitle = styled(Typography)(({ theme }) => ({
+    fontWeight: 500,
+    fontSize: '0.95rem',
+    letterSpacing: '0.5px',
+    marginBottom: theme.spacing(2),
+    color: '#4fc3f7',
+    textTransform: 'uppercase',
+}));
 
-function TabPanel(props: TabPanelProps) {
-    const { children, value, index, ...other } = props;
+const SectionSubtitle = styled(Typography)(({ theme }) => ({
+    fontWeight: 500,
+    fontSize: '0.85rem',
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: theme.spacing(1),
+}));
 
-    return (
-        <div
-            role="tabpanel"
-            hidden={value !== index}
-            id={`build-scene-tabpanel-${index}`}
-            aria-labelledby={`build-scene-tab-${index}`}
-            {...other}
-            style={{ 
-                height: index === value ? 'auto' : 0,
-                overflow: 'auto',
-                flex: index === value ? 1 : 0
-            }}
-        >
-            {value === index && (
-                <Box sx={{ p: 2 }}>
-                    {children}
-                </Box>
-            )}
-        </div>
-    );
-}
+const StyledTextField = styled(TextField)(({ theme }) => ({
+    '& .MuiOutlinedInput-root': {
+        color: 'rgba(255, 255, 255, 0.9)',
+        '& fieldset': {
+            borderColor: 'rgba(255, 255, 255, 0.15)'
+        },
+        '&:hover fieldset': {
+            borderColor: 'rgba(255, 255, 255, 0.3)'
+        },
+        '&.Mui-focused fieldset': {
+            borderColor: '#4fc3f7'
+        },
+    },
+    '& .MuiInputLabel-root': {
+        color: 'rgba(255, 255, 255, 0.5)',
+        fontSize: '0.8rem',
+    },
+    '& .MuiInputLabel-root.Mui-focused': {
+        color: '#4fc3f7',
+    },
+    '& .MuiInputBase-input': {
+        fontSize: '0.85rem',
+    },
+}));
+
+const StyledFormControl = styled(FormControl)(({ theme }) => ({
+    '& .MuiInputLabel-root': {
+        color: 'rgba(255, 255, 255, 0.5)',
+        fontSize: '0.8rem',
+    },
+    '& .MuiOutlinedInput-root': {
+        color: 'rgba(255, 255, 255, 0.9)',
+        fontSize: '0.85rem',
+        '& fieldset': {
+            borderColor: 'rgba(255, 255, 255, 0.15)'
+        },
+        '&:hover fieldset': {
+            borderColor: 'rgba(255, 255, 255, 0.3)'
+        },
+        '&.Mui-focused fieldset': {
+            borderColor: '#4fc3f7'
+        },
+    },
+    '& .MuiSelect-icon': {
+        color: 'rgba(255, 255, 255, 0.5)'
+    },
+}));
+
+const ActionButton = styled(Button)(({ theme }) => ({
+    textTransform: 'none',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    borderRadius: '4px',
+    padding: theme.spacing(0.75, 2),
+    '&.MuiButton-containedPrimary': {
+        backgroundColor: '#4fc3f7',
+        color: '#000',
+        '&:hover': {
+            backgroundColor: '#81d4fa',
+        },
+    },
+    '&.MuiButton-containedSecondary': {
+        backgroundColor: '#ff3366',
+        color: '#000',
+        '&:hover': {
+            backgroundColor: '#ff5c85',
+        },
+    },
+    '&.MuiButton-outlined': {
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+        color: 'rgba(255, 255, 255, 0.9)',
+        '&:hover': {
+            borderColor: 'rgba(255, 255, 255, 0.5)',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        },
+    },
+}));
+
+const StyledListItem = styled(ListItem)(({ theme }) => ({
+    backgroundColor: 'rgba(30, 30, 30, 0.6)',
+    borderRadius: '4px',
+    marginBottom: theme.spacing(1),
+    '&:hover': {
+        backgroundColor: 'rgba(40, 40, 40, 0.8)',
+    },
+}));
+
+const StyledToggleButtonGroup = styled(ToggleButtonGroup)(({ theme }) => ({
+    '& .MuiToggleButton-root': {
+        color: 'rgba(255, 255, 255, 0.7)',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        textTransform: 'none',
+        fontSize: '0.85rem',
+        padding: theme.spacing(0.5, 1.5),
+        '&.Mui-selected': {
+            backgroundColor: 'rgba(79, 195, 247, 0.15)',
+            color: '#4fc3f7',
+            borderColor: 'rgba(79, 195, 247, 0.5)',
+        },
+        '&:hover': {
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        },
+    },
+}));
 
 const BuildSceneStep: React.FC = () => {
     const { state, dispatch } = useMission();
-    const [width, setWidth] = useState<number>(100);
-    const [length, setLength] = useState<number>(100);
-    const [height, setHeight] = useState<number>(100);
-    const [color, setColor] = useState<string>('blue'); // Default color
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [successMessage, setSuccessMessage] = useState<string>('');
-    const [errorMessage, setErrorMessage] = useState<string>('');
-    
-    // Tab state
-    const [activeTab, setActiveTab] = useState<number>(0);
-    
-    // Accordion expansion states
-    const [objectInfoExpanded, setObjectInfoExpanded] = useState<boolean>(true);
-    const [objectListExpanded, setObjectListExpanded] = useState<boolean>(true);
-    
-    // Export settings
-    const [exportFormat, setExportFormat] = useState<string>('glb');
+    const { sceneObjects } = state;
 
-    // Filter scene objects created from build-scene
+    const [width, setWidth] = useState<number>(10);
+    const [length, setLength] = useState<number>(10);
+    const [height, setHeight] = useState<number>(10);
+    const [color, setColor] = useState<string>('#888888');
+    const objectType = 'box';
+    const [objectClass, setObjectClass] = useState<'neutral' | 'obstacle' | 'asset'>('neutral');
+    
+    const [actionTab, setActionTab] = useState<'objects' | 'import' | 'export'>('objects');
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [errorMessage, setErrorMessage] = useState<string>('');
+    const [successMessage, setSuccessMessage] = useState<string>('');
+
+    const [exportFormat, setExportFormat] = useState<string>('geojson');
+
     const buildSceneObjects = state.sceneObjects.filter(obj => 
         obj.source === 'build-scene-ui' || obj.type === 'box'
     );
+
+    const handleDimensionChange = (setter: React.Dispatch<React.SetStateAction<number>>, value: string) => {
+        if (value === '') {
+            setter(0);
+            return;
+        }
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue) && numValue >= 0) {
+            setter(numValue);
+        }
+    };
+
+    const handleActionTabChange = (
+        event: React.MouseEvent<HTMLElement>,
+        newTab: 'objects' | 'import' | 'export' | null,
+    ) => {
+        if (newTab !== null) {
+            setActionTab(newTab);
+        }
+    };
 
     const handleCreateObject = () => {
         setIsLoading(true);
         setErrorMessage('');
         
-        try {
-            // Generate UUID for the object
-            const uuid = generateUUID();
-            
-            // Calculate offset based on existing objects to prevent stacking
-            const objectCount = buildSceneObjects.length;
-            const offsetX = objectCount * 20; // Offset each object by 20 meters in X
-            const offsetZ = objectCount * 10; // Offset each object by 10 meters in Z
-            
-            // Create object data
-            const newObject: SceneObject = {
-                id: uuid,
-                type: 'box',
-                width: width,
-                length: length,
-                height: height,
-                color: color,
-                position: {
-                    x: offsetX,
-                    y: 0, // Ground level
-                    z: offsetZ
-                },
-                rotation: { x: 0, y: 0, z: 0 },
+        const widthMeters = width;
+        const lengthMeters = length;
+        const heightMeters = height;
+        const selectedColor = color;
+        const selectedClass = objectClass;
+
+        if (widthMeters <= 0 || lengthMeters <= 0 || heightMeters <= 0) {
+            setErrorMessage("Dimensions must be positive numbers.");
+            setIsLoading(false);
+            return;
+        }
+
+        const newObject: SceneObject = {
+            id: generateUUID(),
+            type: objectType,
+            position: { x: 0, y: 0, z: heightMeters / 2 },
+            rotation: { x: 0, y: 0, z: 0 },
+            width: widthMeters,
+            length: lengthMeters,
+            height: heightMeters,
+            color: selectedColor,
+            class: selectedClass,
             createdAt: new Date().toISOString(),
             source: 'build-scene-ui'
-            };
-            
-            // Add the object to mission context
+        };
+
+        try {
             dispatch({ type: 'ADD_SCENE_OBJECT', payload: newObject });
-            
-            // Show success message
-            setSuccessMessage('3D object created successfully');
+            setSuccessMessage('Object created successfully!');
             setTimeout(() => setSuccessMessage(''), 3000);
-            
-            // Optionally reset fields or provide additional feedback
-            // setWidth(100);
-            // setLength(100);
-            // setHeight(100);
         } catch (error) {
-            console.error('Error creating 3D object:', error);
-            setErrorMessage(error instanceof Error ? error.message : 'Failed to create 3D object');
+            console.error("Error dispatching ADD_SCENE_OBJECT:", error);
+            setErrorMessage("Failed to add object to state.");
         } finally {
             setIsLoading(false);
         }
@@ -161,7 +257,6 @@ const BuildSceneStep: React.FC = () => {
     };
 
     const handleSelectObject = (id: string) => {
-        // Here you would implement selection logic
         console.log(`Selected object: ${id}`);
     };
     
@@ -170,60 +265,59 @@ const BuildSceneStep: React.FC = () => {
         if (!file) return;
         
         setIsLoading(true);
+        setErrorMessage('');
+        setSuccessMessage('');
         
         try {
-            // Process file based on extension
             const fileName = file.name.toLowerCase();
             
             if (fileName.endsWith('.geojson') || fileName.endsWith('.kml')) {
-                // Handle GeoJSON or KML import
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
-                        // Generate a unique ID for the imported data
-                        const uuid = generateUUID();
+                        const fileContent = e.target?.result as string;
+                        if (!fileContent) throw new Error("Failed to read file content.");
                         
-                        // This would dispatch an event or action to process the geo data
-                        // For now, we'll just show a success message
-                        console.log(`Imported ${fileName.endsWith('.geojson') ? 'GeoJSON' : 'KML'} data with ID: ${uuid}`);
-                        setSuccessMessage(`${fileName.endsWith('.geojson') ? 'GeoJSON' : 'KML'} data imported successfully`);
+                        const importType = fileName.endsWith('.geojson') ? 'GeoJSON' : 'KML';
+                        console.log(`Processing imported ${importType} data...`);
+                        setSuccessMessage(`${importType} file selected. Processing...`);
+                        setTimeout(() => {
+                            setSuccessMessage(`${importType} data processed successfully (Placeholder)`);
+                            setIsLoading(false);
+                         }, 1500);
+
                     } catch (error) {
-                        setErrorMessage(`Error importing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                    } finally {
+                        console.error(`Error processing ${fileName}:`, error);
+                        setErrorMessage(`Error processing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
                         setIsLoading(false);
                     }
                 };
+                reader.onerror = () => {
+                     setErrorMessage('Failed to read the file.');
+                     setIsLoading(false);
+                }
                 reader.readAsText(file);
+
             } else if (fileName.endsWith('.glb') || fileName.endsWith('.gltf')) {
-                // Handle 3D model import
-                // Create a temporary URL for the file
                 const objectUrl = URL.createObjectURL(file);
-                
-                // Generate a unique ID for the model
                 const uuid = generateUUID();
                 
-                // Here you would dispatch an event or action to load the 3D model
-                console.log(`Importing 3D model with ID: ${uuid}, URL: ${objectUrl}`);
-                setSuccessMessage('3D model importing. Please wait...');
+                console.log(`Importing 3D model: ${file.name}, URL: ${objectUrl}`);
                 
-                // For demonstration, we'll create a placeholder object
                 const modelObject: SceneObject = {
                     id: uuid,
                     type: 'model',
-                    position: {
-                        x: 0,
-                        y: 0,
-                        z: 0
-                    },
+                    position: { x: 0, y: 0, z: 0 },
+                    rotation: { x: 0, y: 0, z: 0 },
                     url: objectUrl,
                     createdAt: new Date().toISOString(),
                     source: 'build-scene-import'
                 };
                 
-                // Add to mission context
                 dispatch({ type: 'ADD_SCENE_OBJECT', payload: modelObject });
-                
+                setSuccessMessage('3D model added to scene. It may take a moment to load.');
                 setIsLoading(false);
+
             } else {
                 setErrorMessage(`Unsupported file type: ${fileName}`);
                 setIsLoading(false);
@@ -237,25 +331,64 @@ const BuildSceneStep: React.FC = () => {
     
     const handleExportScene = () => {
         if (buildSceneObjects.length === 0) {
-            setErrorMessage('No objects to export');
+            setErrorMessage('No objects created via UI to export');
             return;
         }
         
         setIsLoading(true);
+        setErrorMessage('');
+        setSuccessMessage('');
         
         try {
-            // Here you would implement the actual export logic
-            // For now, we'll just log the objects to be exported
             console.log(`Exporting scene in format: ${exportFormat}`);
             console.log('Objects to export:', buildSceneObjects);
+
+            if (exportFormat === 'geojson') {
+                const features = buildSceneObjects
+                    .filter(obj => obj.type === 'box')
+                    .map(obj => ({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point', 
+                            coordinates: [obj.position.x, obj.position.y]
+                        },
+                        properties: {
+                            id: obj.id,
+                            type: obj.type,
+                            width: obj.width,
+                            length: obj.length,
+                            height: obj.height,
+                            color: obj.color,
+                            positionZ: obj.position.z,
+                            createdAt: obj.createdAt,
+                            source: obj.source
+                        }
+                 }));
+
+                const geoJsonData = {
+                    type: 'FeatureCollection',
+                    features: features
+                };
+
+                const blob = new Blob([JSON.stringify(geoJsonData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'scene_objects.geojson';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                setSuccessMessage(`Scene exported as GeoJSON successfully`);
+            } else {
+                 setErrorMessage(`Export format ${exportFormat} not implemented yet.`);
+            }
             
-            setSuccessMessage(`Exporting scene as ${exportFormat.toUpperCase()}...`);
-            
-            // Simulate export completion
             setTimeout(() => {
                 setIsLoading(false);
-                setSuccessMessage(`Scene exported as ${exportFormat.toUpperCase()} successfully`);
-            }, 1500);
+            }, 500);
+
         } catch (error) {
             console.error('Error exporting scene:', error);
             setErrorMessage(error instanceof Error ? error.message : 'Failed to export scene');
@@ -264,362 +397,364 @@ const BuildSceneStep: React.FC = () => {
     };
     
     const handleContinue = () => {
-        if (buildSceneObjects.length === 0) {
-            setErrorMessage('Please create at least one object before continuing');
+        if (state.sceneObjects.length === 0) {
+            setErrorMessage('Please add or import at least one object before continuing');
             return;
         }
+        setErrorMessage('');
         
-        // Here you would implement the logic to proceed to the next step
         console.log('Continue to Hardware Selection');
-        
-        // For example:
-        // dispatch({ type: 'SET_ACTIVE_CONTROL_PANE', payload: 'hardware-selection' });
     };
 
-    // Use Effect to handle cleanup if component unmounts
     useEffect(() => {
         return () => {
-            // Clean up any event listeners or timers here
+            state.sceneObjects.forEach(obj => {
+                if (obj.type === 'model' && obj.url && obj.url.startsWith('blob:')) {
+                    URL.revokeObjectURL(obj.url);
+                }
+            });
         };
-    }, []);
+    }, [state.sceneObjects]);
 
     return (
-        <Box sx={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            overflow: 'hidden',
-            bgcolor: 'background.paper',
-            borderRadius: 1,
-            boxShadow: 1
-        }}>
-            {/* Header */}
-            <Box sx={{ 
-                p: 2, 
-                borderBottom: 1, 
-                borderColor: 'divider',
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-            }}>
-                <Typography variant="h6">Step #2: Build Scene</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                <Typography variant="h6" gutterBottom>Step #2: Build Scene</Typography>
             </Box>
-            
-            {/* Tabs */}
-            <Tabs 
-                value={activeTab} 
-                onChange={(e, val) => setActiveTab(val)} 
-                aria-label="build scene tabs"
-                variant="fullWidth"
-                sx={{ borderBottom: 1, borderColor: 'divider' }}
-            >
-                <Tab 
-                    icon={<AddBoxIcon />} 
-                    label="Objects" 
-                    id="build-scene-tab-0"
-                    aria-controls="build-scene-tabpanel-0"
-                />
-                <Tab 
-                    icon={<CloudUploadIcon />} 
-                    label="Import" 
-                    id="build-scene-tab-1"
-                    aria-controls="build-scene-tabpanel-1"
-                />
-                <Tab 
-                    icon={<CloudDownloadIcon />} 
-                    label="Export" 
-                    id="build-scene-tab-2"
-                    aria-controls="build-scene-tabpanel-2"
-                />
-            </Tabs>
-            
-            {/* Tab Panels Container */}
-            <Box sx={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                flex: 1, 
-                overflow: 'hidden',
-                bgcolor: 'background.default'
-            }}>
-                {/* Objects Tab */}
-                <TabPanel value={activeTab} index={0}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-                        {/* Object Info Settings Section */}
-                        <Accordion 
-                            expanded={objectInfoExpanded} 
-                            onChange={() => setObjectInfoExpanded(!objectInfoExpanded)}
-                            sx={{ bgcolor: 'background.paper' }}
+
+            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                <Stack spacing={3}>
+                    <Box>
+                        <SectionTitle variant="h6">Build Scene</SectionTitle>
+                        <StyledToggleButtonGroup
+                            value={actionTab}
+                            exclusive
+                            onChange={handleActionTabChange}
+                            aria-label="Scene actions"
+                            size="small"
+                            sx={{ mb: 2 }}
                         >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                aria-controls="object-info-content"
-                                id="object-info-header"
-                            >
-                                <Typography variant="subtitle1">Object Info Settings</Typography>
-                            </AccordionSummary>
-                            <AccordionDetails>
-            <Stack spacing={2}>
-                                    <Typography variant="subtitle2">Object Dimensions</Typography>
-                                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <TextField
-                                            label="Width (m)"
-                    type="number"
-                    value={width}
-                                            onChange={(e) => setWidth(Math.max(5, Math.min(500, parseFloat(e.target.value) || 0)))}
-                    size="small"
-                                            InputProps={{ inputProps: { min: 5, max: 500, step: 5 } }}
-                                            sx={{ flexGrow: 1, minWidth: '120px' }}
-                />
-                <TextField
-                                            label="Length (m)"
-                    type="number"
-                    value={length}
-                                            onChange={(e) => setLength(Math.max(5, Math.min(500, parseFloat(e.target.value) || 0)))}
-                    size="small"
-                                            InputProps={{ inputProps: { min: 5, max: 500, step: 5 } }}
-                                            sx={{ flexGrow: 1, minWidth: '120px' }}
-                />
-                <TextField
-                                            label="Height (m)"
-                    type="number"
-                    value={height}
-                                            onChange={(e) => setHeight(Math.max(5, Math.min(500, parseFloat(e.target.value) || 0)))}
-                    size="small"
-                                            InputProps={{ inputProps: { min: 5, max: 500, step: 5 } }}
-                                            sx={{ flexGrow: 1, minWidth: '120px' }}
-                />
+                            <ToggleButton value="objects" aria-label="Create Objects">
+                                <ViewInArIcon sx={{ fontSize: '1rem', mr: 0.5 }} /> Objects
+                            </ToggleButton>
+                            <ToggleButton value="import" aria-label="Import">
+                                <CloudUploadIcon sx={{ fontSize: '1rem', mr: 0.5 }} /> Import
+                            </ToggleButton>
+                            <ToggleButton value="export" aria-label="Export">
+                                <CloudDownloadIcon sx={{ fontSize: '1rem', mr: 0.5 }} /> Export
+                            </ToggleButton>
+                        </StyledToggleButtonGroup>
+                    </Box>
+
+                    <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)' }} />
+
+                    {actionTab === 'objects' && (
+                        <>
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'rgba(30, 30, 30, 0.5)', borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+                                <Stack spacing={2}>
+                                    <Box>
+                                        <SectionSubtitle variant="subtitle1">Add Box Object</SectionSubtitle>
+                                        <Box display="flex" sx={{ gap: 2 }}>
+                                            <Box sx={{ flexGrow: 1 }}>
+                                                <StyledTextField
+                                                    label="Width (m)"
+                                                    type="number"
+                                                    value={width || ''}
+                                                    onChange={(e) => handleDimensionChange(setWidth, e.target.value)}
+                                                    fullWidth
+                                                    variant="outlined"
+                                                    size="small"
+                                                    InputProps={{
+                                                        inputProps: { min: 0, step: 0.1 }
+                                                    }}
+                                                />
+                                            </Box>
+                                            <Box sx={{ flexGrow: 1 }}>
+                                                <StyledTextField
+                                                    label="Length (m)"
+                                                    type="number"
+                                                    value={length || ''}
+                                                    onChange={(e) => handleDimensionChange(setLength, e.target.value)}
+                                                    fullWidth
+                                                    variant="outlined"
+                                                    size="small"
+                                                    InputProps={{
+                                                        inputProps: { min: 0, step: 0.1 }
+                                                    }}
+                                                />
+                                            </Box>
+                                            <Box sx={{ flexGrow: 1 }}>
+                                                <StyledTextField
+                                                    label="Height (m)"
+                                                    type="number"
+                                                    value={height || ''}
+                                                    onChange={(e) => handleDimensionChange(setHeight, e.target.value)}
+                                                    fullWidth
+                                                    variant="outlined"
+                                                    size="small"
+                                                    InputProps={{
+                                                        inputProps: { min: 0, step: 0.1 }
+                                                    }}
+                                                />
+                                            </Box>
+                                        </Box>
                                     </Box>
-                                    
-                 <FormControl fullWidth size="small">
-                                        <InputLabel id="object-color-label">Object Color</InputLabel>
-                    <Select
-                        labelId="object-color-label"
-                        value={color}
-                                            label="Object Color"
-                        onChange={(e) => setColor(e.target.value as string)}
-                    >
-                        <MenuItem value="blue">Blue</MenuItem>
-                        <MenuItem value="red">Red</MenuItem>
-                        <MenuItem value="green">Green</MenuItem>
-                        <MenuItem value="yellow">Yellow</MenuItem>
-                                            <MenuItem value="purple">Purple</MenuItem>
-                        <MenuItem value="orange">Orange</MenuItem>
-                        <MenuItem value="gray">Gray</MenuItem>
-                        <MenuItem value="white">White</MenuItem>
-                    </Select>
-                </FormControl>
-                                    
-                <Button
-                    variant="contained"
-                    startIcon={<AddBoxIcon />}
-                    onClick={handleCreateObject}
-                                        disabled={isLoading}
-                                        color="success"
-                                        fullWidth
-                                    >
-                                        Create 3D Object
-                                    </Button>
+
+                                    <Box>
+                                        <Box display="flex" sx={{ gap: 2 }}>
+                                            <Box sx={{ flexGrow: 1 }}>
+                                                <StyledFormControl fullWidth size="small">
+                                                    <InputLabel id="color-select-label">Color</InputLabel>
+                                                    <Select
+                                                        labelId="color-select-label"
+                                                        value={color}
+                                                        label="Color"
+                                                        onChange={(e) => setColor(e.target.value as string)}
+                                                        MenuProps={{
+                                                            PaperProps: {
+                                                                sx: {
+                                                                    bgcolor: 'rgba(21, 21, 21, 0.97)',
+                                                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                                    boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
+                                                                    '& .MuiMenuItem-root': {
+                                                                        color: 'rgba(255, 255, 255, 0.9)',
+                                                                        fontSize: '0.85rem',
+                                                                    }
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        <MenuItem value="#888888">Grey</MenuItem>
+                                                        <MenuItem value="#add8e6">Light Blue</MenuItem>
+                                                        <MenuItem value="#90ee90">Light Green</MenuItem>
+                                                        <MenuItem value="#ffcccb">Light Red</MenuItem>
+                                                        <MenuItem value="#ffffff">White</MenuItem>
+                                                        <MenuItem value="#0000ff">Blue</MenuItem>
+                                                        <MenuItem value="#ff0000">Red</MenuItem>
+                                                        <MenuItem value="#008000">Green</MenuItem>
+                                                    </Select>
+                                                </StyledFormControl>
+                                            </Box>
+                                            <Box sx={{ flexGrow: 1 }}>
+                                                <StyledFormControl fullWidth size="small">
+                                                    <InputLabel id="class-select-label">Class</InputLabel>
+                                                    <Select
+                                                        labelId="class-select-label"
+                                                        value={objectClass}
+                                                        label="Class"
+                                                        onChange={(e) => setObjectClass(e.target.value as 'neutral' | 'obstacle' | 'asset')}
+                                                        MenuProps={{
+                                                            PaperProps: {
+                                                                sx: {
+                                                                    bgcolor: 'rgba(21, 21, 21, 0.97)',
+                                                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                                    boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
+                                                                    '& .MuiMenuItem-root': {
+                                                                        color: 'rgba(255, 255, 255, 0.9)',
+                                                                        fontSize: '0.85rem',
+                                                                    }
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        <MenuItem value="neutral">Neutral</MenuItem>
+                                                        <MenuItem value="obstacle">Obstacle</MenuItem>
+                                                        <MenuItem value="asset">Asset</MenuItem>
+                                                    </Select>
+                                                </StyledFormControl>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+
+                                    <Box>
+                                        <ActionButton
+                                            variant="contained"
+                                            color="primary"
+                                            onClick={handleCreateObject}
+                                            startIcon={<AddCircleOutlineIcon />}
+                                            disabled={isLoading}
+                                            fullWidth
+                                        >
+                                            Add Object
+                                        </ActionButton>
+                                    </Box>
                                 </Stack>
-                            </AccordionDetails>
-                        </Accordion>
-                        
-                        {/* Scene Objects List */}
-                        {buildSceneObjects.length > 0 && (
-                            <Accordion 
-                                expanded={objectListExpanded} 
-                                onChange={() => setObjectListExpanded(!objectListExpanded)}
-                                sx={{ 
-                                    bgcolor: 'background.paper',
-                                    flex: 1,
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    minHeight: objectListExpanded ? '200px' : 'auto'
-                                }}
-                            >
-                                <AccordionSummary
-                                    expandIcon={<ExpandMoreIcon />}
-                                    aria-controls="scene-objects-content"
-                                    id="scene-objects-header"
-                                >
-                                    <Typography variant="subtitle1">Scene Objects</Typography>
-                                </AccordionSummary>
-                                <AccordionDetails sx={{ overflow: 'auto', flex: 1 }}>
-                                    <List dense>
-                                        {buildSceneObjects.map((object) => (
-                                            <ListItem 
-                                                key={object.id}
-                                                onClick={() => handleSelectObject(object.id)}
-                                                sx={{
-                                                    cursor: 'pointer',
-                                                    borderRadius: 1,
-                                                    '&:hover': {
-                                                        bgcolor: 'action.hover'
-                                                    }
-                                                }}
-                                            >
+                            </Paper>
+
+                            <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)' }} />
+
+                            <Box>
+                                <SectionSubtitle variant="subtitle1">Object List</SectionSubtitle>
+                                {buildSceneObjects.length > 0 ? (
+                                    <List sx={{ p: 0 }}>
+                                        {buildSceneObjects.map((obj) => (
+                                            <StyledListItem key={obj.id}>
                                                 <ListItemAvatar>
-                                                    <Avatar sx={{ bgcolor: object.color || 'gray' }}>
-                                                        <AddBoxIcon />
+                                                    <Avatar 
+                                                        sx={{ 
+                                                            bgcolor: obj.color || '#888888', 
+                                                            width: 30, 
+                                                            height: 30 
+                                                        }}
+                                                    >
+                                                        <ViewInArIcon fontSize="small" />
                                                     </Avatar>
                                                 </ListItemAvatar>
                                                 <ListItemText
-                                                    primary={`Object #${object.id.slice(0, 8)}`}
-                                                    secondary={object.type === 'box' 
-                                                        ? `${object.width}m × ${object.length}m × ${object.height}m` 
-                                                        : object.type === 'model' 
-                                                            ? 'Imported 3D Model' 
-                                                            : 'Unknown Type'
+                                                    primary={
+                                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+                                                            {obj.type.charAt(0).toUpperCase() + obj.type.slice(1)}
+                                                        </Typography>
+                                                    }
+                                                    secondary={
+                                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', fontFamily: '"Roboto Mono", monospace' }}>
+                                                            {`${obj.width?.toFixed(1)}m × ${obj.length?.toFixed(1)}m × ${obj.height?.toFixed(1)}m`}
+                                                        </Typography>
                                                     }
                                                 />
                                                 <ListItemSecondaryAction>
                                                     <IconButton 
                                                         edge="end" 
                                                         aria-label="delete"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleRemoveObject(object.id);
+                                                        onClick={() => handleRemoveObject(obj.id)}
+                                                        size="small"
+                                                        sx={{ 
+                                                            color: 'rgba(255, 51, 102, 0.7)',
+                                                            '&:hover': {
+                                                                backgroundColor: 'rgba(255, 51, 102, 0.15)',
+                                                                color: '#ff3366'
+                                                            }
                                                         }}
-                                                        disabled={isLoading}
-                                                        color="error"
                                                     >
-                                                        <DeleteIcon />
+                                                        <DeleteIcon fontSize="small" />
                                                     </IconButton>
                                                 </ListItemSecondaryAction>
-                                            </ListItem>
+                                            </StyledListItem>
                                         ))}
                                     </List>
-                                </AccordionDetails>
-                            </Accordion>
-                        )}
-                    </Box>
-                </TabPanel>
-                
-                {/* Import Tab */}
-                <TabPanel value={activeTab} index={1}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" gutterBottom>Import Data</Typography>
+                                ) : (
+                                    <Typography variant="body2" align="center" sx={{ color: 'rgba(255, 255, 255, 0.6)', p: 2 }}>
+                                        No objects added yet
+                                    </Typography>
+                                )}
+                            </Box>
+                        </>
+                    )}
+
+                    {actionTab === 'import' && (
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Typography variant="subtitle1" gutterBottom>Import Data</Typography>
                             <Typography variant="body2" color="text.secondary" paragraph>
-                                Import GeoJSON, KML, or 3D Model files to add to your scene.
+                                Add external data like GeoJSON features (buildings, areas), KML placemarks, or 3D models (GLB/GLTF) to the scene.
                             </Typography>
                             
-                            <Box sx={{ my: 3 }}>
-                                <Button
-                                    component="label"
-                                    variant="contained"
-                                    startIcon={<CloudUploadIcon />}
-                                    sx={{ mb: 2 }}
-                                    fullWidth
-                                >
-                                    Select File
-                                    <input
-                                        type="file"
-                                        hidden
-                                        onChange={handleFileImport}
-                                        accept=".geojson,.kml,.glb,.gltf"
-                                    />
-                                </Button>
-                                
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                    Supported formats: GeoJSON (.geojson), KML (.kml), 3D Models (.glb, .gltf)
-                                </Typography>
-                            </Box>
+                            <Button
+                                component="label"
+                                variant="outlined"
+                                startIcon={<CloudUploadIcon />}
+                                disabled={isLoading}
+                                fullWidth
+                            >
+                                Select File to Import
+                                <input
+                                    type="file"
+                                    hidden
+                                    onChange={handleFileImport}
+                                    accept=".geojson,.kml,.glb,.gltf"
+                                />
+                            </Button>
+                            
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                                Supported: GeoJSON, KML, GLB, GLTF
+                            </Typography>
                             
                             <Alert severity="info" sx={{ mt: 2 }}>
-                                Imported models will be placed at the center of your scene. You can move them after import.
+                                Imported models are typically placed at the scene origin (0,0,0). GeoJSON/KML features will be processed based on their coordinates.
                             </Alert>
-                        </CardContent>
-                    </Card>
-                </TabPanel>
-                
-                {/* Export Tab */}
-                <TabPanel value={activeTab} index={2}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" gutterBottom>Export Scene</Typography>
+                        </Paper>
+                    )}
+
+                    {actionTab === 'export' && (
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Typography variant="subtitle1" gutterBottom>Export Scene Objects</Typography>
                             <Typography variant="body2" color="text.secondary" paragraph>
-                                Export your created scene to different file formats.
+                                Export the objects created via the UI in a selected format. Note: Imported models are not typically re-exported.
                             </Typography>
                             
-                            <Box sx={{ my: 3 }}>
-                                <FormControl fullWidth sx={{ mb: 2 }}>
+                            <Stack spacing={2}>
+                                <FormControl fullWidth size="small">
                                     <InputLabel id="export-format-label">Export Format</InputLabel>
-                                    <Select
-                                        labelId="export-format-label"
-                                        value={exportFormat}
-                                        label="Export Format"
-                                        onChange={(e) => setExportFormat(e.target.value as string)}
-                                    >
-                                        <MenuItem value="glb">GLB (Binary 3D Model)</MenuItem>
-                                        <MenuItem value="gltf">GLTF (3D Model)</MenuItem>
-                                        <MenuItem value="geojson">GeoJSON</MenuItem>
+                                    <Select 
+                                         labelId="export-format-label"
+                                         value={exportFormat} 
+                                         label="Export Format" 
+                                         onChange={(e) => setExportFormat(e.target.value as string)}
+                                     >
+                                        <MenuItem value="geojson">GeoJSON (Box Features)</MenuItem>
                                     </Select>
                                 </FormControl>
                                 
-                                <Button
-                                    variant="contained"
-                                    startIcon={<CloudDownloadIcon />}
-                                    onClick={handleExportScene}
-                                    disabled={isLoading || buildSceneObjects.length === 0}
+                                <Button 
+                                    variant="outlined" 
+                                    startIcon={<CloudDownloadIcon />} 
+                                    onClick={handleExportScene} 
+                                    disabled={isLoading || buildSceneObjects.length === 0} 
                                     fullWidth
                                 >
-                                    Export Scene
+                                    Export Objects
                                 </Button>
-                            </Box>
+                            </Stack>
                             
-                            {buildSceneObjects.length === 0 && (
-                                <Alert severity="warning" sx={{ mt: 2 }}>
-                                    Create objects in the scene first to enable export.
-                                </Alert>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabPanel>
+                            {buildSceneObjects.length === 0 && <Alert severity="warning" sx={{ mt: 2 }}>No UI-created objects available to export.</Alert>}
+                        </Paper>
+                    )}
+                </Stack>
             </Box>
             
-            {/* Continue Button */}
-            <Box sx={{ 
-                p: 2, 
-                borderTop: 1, 
-                borderColor: 'divider',
-                display: 'flex',
-                justifyContent: 'flex-end'
-            }}>
-                <Button
-                    variant="contained"
-                    endIcon={<ArrowForwardIcon />}
-                    onClick={handleContinue}
-                    disabled={isLoading || buildSceneObjects.length === 0}
-                    color="primary"
-                >
-                    Continue to Hardware Selection
-                </Button>
-            </Box>
-            
-            {/* Success and Error Messages */}
             <Snackbar 
                 open={Boolean(successMessage)} 
                 autoHideDuration={3000} 
                 onClose={() => setSuccessMessage('')}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert severity="success" onClose={() => setSuccessMessage('')}>
+                <Alert severity="success" onClose={() => setSuccessMessage('')} sx={{ width: '100%' }}>
                     {successMessage}
                 </Alert>
             </Snackbar>
 
-            <Snackbar 
-                open={Boolean(errorMessage)} 
-                autoHideDuration={5000} 
+             <Snackbar 
+                open={Boolean(errorMessage) && actionTab !== 'objects'}
+                autoHideDuration={6000} 
                 onClose={() => setErrorMessage('')}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            >
-                <Alert severity="error" onClose={() => setErrorMessage('')}>
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+             >
+                 <Alert severity="error" onClose={() => setErrorMessage('')} sx={{ width: '100%' }}>
                     {errorMessage}
                 </Alert>
             </Snackbar>
+
+            {/* Informational Text Box at the bottom */} 
+            <Box sx={{ p: 2, mt: 'auto' }}> {/* Push to bottom */} 
+              <Box 
+                sx={{
+                  p: 1.5, // Padding inside the box
+                  bgcolor: 'rgba(30, 30, 30, 0.8)', // Dark background
+                  border: '1px solid rgba(255, 255, 255, 0.1)', // Subtle border
+                  borderRadius: '4px'
+                }}
+              >
+                <Typography 
+                  variant="caption" // Smaller text variant
+                  sx={{ 
+                    color: 'rgba(255, 255, 255, 0.75)', // Lighter text 
+                    display: 'block', // Ensure it behaves like a block
+                    overflowWrap: 'break-word' // Ensure text wraps and breaks words if needed
+                  }}
+                >
+                  **Interaction Tips:** Double-click an object in the 3D view to edit its properties. Hold **Shift** + Double-click a box object to resize it using the handles.
+                </Typography>
+              </Box>
+            </Box>
         </Box>
     );
 };

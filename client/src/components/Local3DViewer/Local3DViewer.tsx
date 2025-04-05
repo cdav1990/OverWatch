@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, Suspense, useMemo } from 'react';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Grid, Box, Sky, Sphere, Line, Cone, Edges } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Grid, Box, Sky, Sphere, Line, Cone, Edges, TransformControls } from '@react-three/drei';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib'; // Import the implementation type for the ref
 import { Paper, CircularProgress, Box as MuiBox } from '@mui/material';
 import * as THREE from 'three';
@@ -9,6 +9,7 @@ import { Waypoint, PathSegment, GCP, PathType, LocalCoord } from '../../types/mi
 import DronePositionControlPanel from '../DronePositionControlPanel/DronePositionControlPanel';
 import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations'; // <-- Import conversion functions
 import { SceneObject } from '../../context/MissionContext';
+import SceneObjectEditModal from './SceneObjectEditModal'; // Import SceneObjectEditModal
 
 // Extend props to accept live telemetry data
 interface Local3DViewerProps {
@@ -90,7 +91,10 @@ const PathLine: React.FC<{
 };
 
 // Ground Control Point visualization
-const GCPMarker: React.FC<{ gcp: GCP }> = ({ gcp }) => {
+const GCPMarker: React.FC<{
+  gcp: GCP;
+  onInteraction: (objectId: string, objectType: 'gcp', isShiftPressed: boolean, event: ThreeEvent<MouseEvent>) => void;
+}> = ({ gcp, onInteraction }) => {
   const { local, color = '#ff0000' } = gcp;
   const { state } = useMission(); // Get context state
   const { hiddenGcpIds } = state;
@@ -100,17 +104,28 @@ const GCPMarker: React.FC<{ gcp: GCP }> = ({ gcp }) => {
     return null; // Don't render if hidden
   }
   
+  // GCPs are typically on the ground, so Z (three.js Y) is often 0 or based on terrain
+  // Ensure position is always a tuple [number, number, number]
+  const position = local ? [local.x, local.z, -local.y] as [number, number, number] : [0, 0, 0] as [number, number, number];
+
+  const handleDoubleClick = (event: ThreeEvent<MouseEvent>) => {
+      event.stopPropagation();
+      const isShiftPressed = event.nativeEvent.shiftKey;
+      onInteraction(gcp.id, 'gcp', isShiftPressed, event);
+  };
+
   return (
     <Sphere
       args={[1, 16, 16]} // Size (radius) and detail
-      position={[local.x, local.z, -local.y]} // Map to threejs coordinates
+      position={position} // Use potentially updated position
+      onDoubleClick={handleDoubleClick} // Add double click handler
     >
-      <meshStandardMaterial 
-        color={color} 
-        roughness={0.2} 
+      <meshStandardMaterial
+        color={color} // Use original color
+        roughness={0.2}
         metalness={0.8}
-        emissive={color}
-        emissiveIntensity={0.5}
+        emissive={color} // Use original color
+        emissiveIntensity={0.5} // Keep original intensity
       />
     </Sphere>
   );
@@ -118,36 +133,38 @@ const GCPMarker: React.FC<{ gcp: GCP }> = ({ gcp }) => {
 
 // Add SceneObjectRenderer component after the GCPMarker component
 // This will render the box objects and other 3D models from the scene
-const SceneObjectRenderer: React.FC<{ sceneObject: SceneObject }> = ({ sceneObject }) => {
-  // Map position to Three.js coordinates
-  const position = sceneObject.position ? 
-    [sceneObject.position.x, sceneObject.position.z, -sceneObject.position.y] : 
-    [0, 0, 0];
-  
-  // Handle rotation if present, converting from ENU to Three.js coordinates
-  const rotation = sceneObject.rotation ? 
-    [
-      THREE.MathUtils.degToRad(sceneObject.rotation.x),
-      THREE.MathUtils.degToRad(sceneObject.rotation.y),
-      THREE.MathUtils.degToRad(sceneObject.rotation.z)
-    ] : 
-    [0, 0, 0];
+const SceneObjectRenderer: React.FC<{
+  sceneObject: SceneObject;
+  onInteraction: (objectId: string, objectType: 'sceneObject', isShiftPressed: boolean, event: ThreeEvent<MouseEvent>) => void; // Modified callback
+}> = ({ sceneObject, onInteraction }) => {
+  // Map position to Three.js coordinates - Use object's position
+  const basePosition = sceneObject.position;
+  const position = basePosition ?
+    [basePosition.x, basePosition.z, -basePosition.y] as [number, number, number] :
+    [0, 0, 0] as [number, number, number];
+
+  // Handle interaction (double-click) on scene objects
+  const handleDoubleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation(); // Prevent the event from bubbling up
+    const isShiftPressed = event.nativeEvent.shiftKey;
+    onInteraction(sceneObject.id, 'sceneObject', isShiftPressed, event); // Call the parent handler, specify type
+  };
 
   // Render different types of objects
   if (sceneObject.type === 'box') {
     return (
-      <Box 
+      <Box
         args={[
-          sceneObject.width || 10, 
-          sceneObject.height || 10, 
+          sceneObject.width || 10,
+          sceneObject.height || 10, // Use Z for height in Three.js Y-up
           sceneObject.length || 10
-        ]} 
+        ]}
         position={position}
-        rotation={rotation}
+        onDoubleClick={handleDoubleClick} // Use the updated handler
       >
-        <meshStandardMaterial 
-          color={sceneObject.color || '#ff0000'} 
-          opacity={0.8}
+        <meshStandardMaterial
+          color={sceneObject.color || '#ff0000'} // Use original color
+          opacity={0.8} // Use original opacity
           transparent
         />
         <Edges color="#ffffff" />
@@ -160,6 +177,7 @@ const SceneObjectRenderer: React.FC<{ sceneObject: SceneObject }> = ({ sceneObje
       <Sphere 
         args={[1, 16, 16]} 
         position={position}
+        onDoubleClick={handleDoubleClick}
       >
         <meshStandardMaterial color="#ff00ff" />
       </Sphere>
@@ -176,7 +194,8 @@ const SceneObjectRenderer: React.FC<{ sceneObject: SceneObject }> = ({ sceneObje
         points={threePoints}
         color={sceneObject.color || '#00ff00'}
         lineWidth={2}
-        closed
+        onClick={(e) => e.stopPropagation()} // Add simple click handler to catch clicks
+        onDoubleClick={handleDoubleClick} // Use the updated handler
       />
     );
   }
@@ -450,6 +469,19 @@ const MissionScene: React.FC<MissionSceneProps> = ({
   const [currentSegmentId, setCurrentSegmentId] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0); // Progress along current leg (0 to 1)
 
+  // State for object dragging/transforming - Consolidated state
+  const [interactingObjectInfo, setInteractingObjectInfo] = useState<{ id: string; type: 'sceneObject' | 'gcp'; mode: 'drag' | 'transform' } | null>(null);
+  const [draggedObjectPreviewPosition, setDraggedObjectPreviewPosition] = useState<LocalCoord | null>(null); // Still needed for GCP drag
+  // State to store initial properties ONLY when transform starts
+  const [initialTransformState, setInitialTransformState] = useState<{
+      object: SceneObject;
+      position: [number, number, number];
+      rotation: [number, number, number];
+      scale: THREE.Vector3; // Still needed for dimension calculation relative to start
+  } | null>(null);
+  const transformControlsRef = useRef<any>(null!); // Ref for TransformControls instance - ENSURE ONLY ONE
+  const objectToTransformRef = useRef<THREE.Mesh>(null!); // Ref for the mesh being transformed
+
   // Refs for scene objects
   const groundMeshRef = useRef<THREE.Mesh>(null); // Ref for the invisible ground mesh
 
@@ -461,25 +493,34 @@ const MissionScene: React.FC<MissionSceneProps> = ({
   // Ref to track the previous follow state
   const prevCameraFollowsDrone = useRef<boolean>(cameraFollowsDrone);
 
-  // Handle mouse move for drawing preview
+  // Handle mouse move for drawing preview AND object dragging
   const handlePointerMove = (event: THREE.Event) => {
-    if (drawingMode !== 'polygon') return;
+    // Perform raycasting only if needed (drawing or DRAGGING GCP)
+    if (drawingMode !== 'polygon' && interactingObjectInfo?.mode !== 'drag') return;
 
     const { camera, raycaster, pointer } = threeState;
     raycaster.setFromCamera(pointer, camera);
     const intersection = new THREE.Vector3();
+
     if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
       // Convert intersection point (Three.js coords) back to LocalCoord (ENU)
-      const previewCoord: LocalCoord = {
+      const groundCoord: LocalCoord = {
         x: intersection.x,
         y: -intersection.z, // Convert Three.js z back to ENU y
-        z: 0 // Assume drawing on the ground (z=0 in ENU)
+        z: 0 // Assume interaction is on the ground (z=0 in ENU)
       };
-      dispatch({ type: 'UPDATE_POLYGON_PREVIEW_POINT', payload: previewCoord });
+
+      if (drawingMode === 'polygon') {
+        dispatch({ type: 'UPDATE_POLYGON_PREVIEW_POINT', payload: groundCoord });
+      } else if (interactingObjectInfo?.mode === 'drag') { // Only update preview for GCP drag
+        // GCPs are assumed to be on the ground (z=0 local)
+        const heightOffset = 0;
+        setDraggedObjectPreviewPosition({ ...groundCoord, z: heightOffset });
+      }
     }
   };
 
-  // Modified pointer down handler for both polygon drawing and takeoff selection
+  // Modified pointer down handler for polygon drawing, takeoff selection, OR potentially initiating drag (though double-click handles initiation)
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     // Stop propagation to prevent OrbitControls interaction
     event.stopPropagation(); 
@@ -747,6 +788,186 @@ const MissionScene: React.FC<MissionSceneProps> = ({
   // change would constantly fight user camera movement while following.
   }, [cameraFollowsDrone, threeState.camera, controlsRef]); 
 
+  // New handler for interactions originating from SceneObjectRenderer or GCPMarker
+  const handleObjectInteraction = (objectId: string, objectType: 'sceneObject' | 'gcp', isShiftPressed: boolean, event: ThreeEvent<MouseEvent>) => {
+    if (isShiftPressed) {
+        let draggedObjectPosition: LocalCoord | undefined | null = null;
+        if (objectType === 'sceneObject') {
+            const obj = state.sceneObjects.find(o => o.id === objectId);
+            // Only allow transform for 'box' type for now
+            if (obj?.type === 'box') {
+                console.log(`Starting transform for SceneObject: ${objectId}`);
+                setInteractingObjectInfo({ id: objectId, type: 'sceneObject', mode: 'transform' });
+                // Store initial state for scaling calculation
+                const initialPos = obj.position ? [obj.position.x, obj.position.z, -obj.position.y] : [0,0,0];
+                const initialRot = obj.rotation ? [THREE.MathUtils.degToRad(obj.rotation.x), THREE.MathUtils.degToRad(obj.rotation.y), THREE.MathUtils.degToRad(obj.rotation.z)] : [0,0,0];
+                // Rename variable to avoid potential scope conflicts
+                const gizmoInitialScale = new THREE.Vector3(1, 1, 1); // Gizmo starts at scale 1
+                setInitialTransformState({
+                    object: obj,
+                    position: initialPos as [number, number, number],
+                    rotation: initialRot as [number, number, number],
+                    scale: gizmoInitialScale // Use renamed variable
+                });
+                // Clear GCP drag state just in case
+                setDraggedObjectPreviewPosition(null);
+            } else {
+                // For non-box objects, maybe just open the modal on shift+click for now?
+                dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: objectId });
+            }
+        } else if (objectType === 'gcp') {
+            draggedObjectPosition = currentMission?.gcps.find(gcp => gcp.id === objectId)?.local;
+            if (draggedObjectPosition) {
+                console.log(`Starting drag for GCP: ${objectId}`);
+                setInteractingObjectInfo({ id: objectId, type: 'gcp', mode: 'drag' });
+                setDraggedObjectPreviewPosition(draggedObjectPosition);
+                // Clear transform state just in case
+                setInitialTransformState(null);
+            } else {
+                console.warn(`Could not find GCP with id ${objectId} to start dragging.`);
+            }
+        }
+    } else {
+        // Open edit modal
+        if (objectType === 'sceneObject') {
+            dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: objectId });
+        } else if (objectType === 'gcp') {
+            dispatch({ type: 'SET_EDITING_GCP_ID', payload: objectId }); // Dispatch action to open GCP modal
+        }
+    }
+  };
+
+  // Handler for when TransformControls finishes a transformation (mouse up)
+  const handleTransformEnd = () => {
+      if (interactingObjectInfo?.type === 'sceneObject' && interactingObjectInfo.mode === 'transform' && transformControlsRef.current?.object && initialTransformState) {
+          const transformedObject = objectToTransformRef.current;
+          if (!transformedObject) return;
+
+          const newScale = transformedObject.scale;
+          const initialDims = { 
+              width: initialTransformState.object.width ?? 1, 
+              length: initialTransformState.object.length ?? 1, 
+              height: initialTransformState.object.height ?? 1 
+          };
+
+          // Calculate new dimensions based on the scale change relative to the initial scale (which was 1,1,1)
+          // Note: Three.js scale applies to X, Y, Z, which map differently to Width, Height, Length
+          // Assuming Box args are [width (X), height (Y), length (Z)] in THREE coords
+          const newWidth = initialDims.width * newScale.x;
+          const newHeight = initialDims.height * newScale.y; // Three.js Y is SceneObject Height
+          const newLength = initialDims.length * newScale.z; // Three.js Z is SceneObject Length
+
+          console.log(`Transform end for ${interactingObjectInfo.id}. New dims: W=${newWidth}, L=${newLength}, H=${newHeight}`);
+
+          // Dispatch update with new dimensions (and potentially position/rotation if mode included translate/rotate)
+          // Position might also need update if scale pivot isn't center
+          const newPosition: LocalCoord = {
+              x: transformedObject.position.x,
+              y: -transformedObject.position.z, // Convert back from Three.js Z
+              // Set the center Z coordinate to half the new height to keep the base on the ground
+              z: newHeight / 2 
+          };
+          
+          //TODO: consider rotation changes if transform mode includes rotation
+
+          dispatch({
+              type: 'UPDATE_SCENE_OBJECT',
+              payload: { 
+                  id: interactingObjectInfo.id, 
+                  width: newWidth, 
+                  length: newLength, 
+                  height: newHeight, 
+                  position: newPosition
+              }
+          });
+
+          // Clear interaction state AFTER dispatching
+          setInteractingObjectInfo(null);
+          setInitialTransformState(null); 
+      }
+  };
+
+  // Effect to listen for Escape key to cancel dragging/transforming
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && interactingObjectInfo) {
+        console.log(`Cancelling interaction for ${interactingObjectInfo.type}: ${interactingObjectInfo.id}`);
+        
+        // Reset TransformControls if it was active
+        if (interactingObjectInfo.mode === 'transform' && transformControlsRef.current?.object && initialTransformState) {
+             // Reset scale, position, rotation? Or just detach?
+             // Detaching is simplest by clearing interactingObjectInfo
+        }
+        
+        setInteractingObjectInfo(null); // Exit interaction mode (drag or transform)
+        setDraggedObjectPreviewPosition(null); // Clear preview position
+        setInitialTransformState(null); // Clear initial data
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+    // Depend on the state needed to perform the update
+  }, [interactingObjectInfo, draggedObjectPreviewPosition, dispatch, initialTransformState]); // Update dependency
+
+  // Get the object currently being transformed, if any
+  const transformingObject = useMemo(() => {
+      if (interactingObjectInfo?.type === 'sceneObject' && interactingObjectInfo.mode === 'transform') {
+          return state.sceneObjects.find(obj => obj.id === interactingObjectInfo.id);
+      }
+      return null;
+  }, [interactingObjectInfo, state.sceneObjects]);
+
+  // Get the GCP currently being dragged, if any
+  const draggingGcp = useMemo(() => {
+      if (interactingObjectInfo?.type === 'gcp' && interactingObjectInfo.mode === 'drag' && draggedObjectPreviewPosition) {
+          const gcpData = currentMission?.gcps.find(g => g.id === interactingObjectInfo.id);
+          if (!gcpData) return null;
+          // Return a temporary GCP object with the preview position for rendering
+          return { 
+              ...gcpData, 
+              local: draggedObjectPreviewPosition 
+          };
+      }
+      return null;
+  }, [interactingObjectInfo, currentMission?.gcps, draggedObjectPreviewPosition]);
+
+  // Effect to attach/detach TransformControls
+  useEffect(() => {
+      const controls = transformControlsRef.current;
+      const targetMesh = objectToTransformRef.current; // The persistent, invisible mesh
+      const shouldBeAttached = interactingObjectInfo?.mode === 'transform' && initialTransformState;
+
+      if (controls && targetMesh) {
+          if (shouldBeAttached) {
+              // Sync the invisible mesh to the initial state of the object
+              targetMesh.position.set(...initialTransformState.position);
+              targetMesh.rotation.set(...initialTransformState.rotation);
+              targetMesh.scale.set(1, 1, 1); // Start scale at 1
+              targetMesh.visible = true; // Make the control target visible
+              targetMesh.updateMatrixWorld(); // Ensure matrix is up-to-date before attach
+              console.log("Attaching TransformControls to target mesh:", targetMesh);
+              controls.attach(targetMesh);
+          } else if (controls.object === targetMesh) { // Detach only if attached to our target
+              console.log("Detaching TransformControls from target mesh");
+              controls.detach();
+              targetMesh.visible = false; // Hide the control target
+          }
+      }
+
+      // Cleanup: Detach if component unmounts while attached
+      return () => {
+          if (controls?.object === targetMesh) {
+              console.log("Detaching TransformControls on unmount/cleanup");
+              controls.detach();
+              targetMesh.visible = false;
+          }
+      };
+  // Rerun when interaction state or initial data changes
+  }, [interactingObjectInfo, initialTransformState]); 
+
   return (
     <>
       <SceneSetup />
@@ -853,19 +1074,59 @@ const MissionScene: React.FC<MissionSceneProps> = ({
         ))
       )}
       
-      {/* Ground Control Points */}
-      {currentMission?.gcps.map(gcp => (
-        <GCPMarker key={gcp.id} gcp={gcp} />
-      ))}
-      
-      {/* Scene Objects */}
-      {currentMission && state.sceneObjects && state.sceneObjects.map((sceneObject) => (
-        <SceneObjectRenderer 
-          key={sceneObject.id} 
-          sceneObject={sceneObject} 
+      {/* Ground Control Points - Filter out the one being dragged */}
+      {currentMission?.gcps
+        .filter(gcp => !(interactingObjectInfo?.type === 'gcp' && interactingObjectInfo?.id === gcp.id)) // Correct filtering logic
+        .map(gcp => (
+        <GCPMarker
+            key={gcp.id}
+            gcp={gcp}
+            onInteraction={handleObjectInteraction}
         />
       ))}
       
+      {/* Render the dragging GCP separately if needed */}
+      {draggingGcp && (
+          <Sphere
+              args={[1, 16, 16]} // Use same args as GCPMarker
+              position={[draggingGcp.local.x, draggingGcp.local.z, -draggingGcp.local.y]}
+          >
+              <meshStandardMaterial
+                  color={'#ffff00'} // Highlight color during drag
+                  emissive={'#ffff00'}
+                  metalness={0.8}
+                  roughness={0.2}
+              />
+          </Sphere>
+      )}
+
+      {/* Scene Objects - Render ALL, including the one being transformed */}
+      {currentMission && state.sceneObjects.map((sceneObject) => (
+        <SceneObjectRenderer
+          key={sceneObject.id}
+          sceneObject={sceneObject}
+          onInteraction={handleObjectInteraction} // Pass interaction handler
+        />
+      ))}
+
+      {/* Render TransformControls unconditionally, manage attachment via useEffect */}
+      <TransformControls
+          ref={transformControlsRef}
+          mode="scale"
+          onMouseUp={handleTransformEnd} // Keep mouse up handler here
+          showX={interactingObjectInfo?.mode === 'transform'} // Show handles only when transforming
+          showY={interactingObjectInfo?.mode === 'transform'}
+          showZ={interactingObjectInfo?.mode === 'transform'}
+          enabled={interactingObjectInfo?.mode === 'transform'} // Enable controls only when transforming
+      >
+          {/* Persistent, invisible mesh for TransformControls to attach to */}
+          <mesh ref={objectToTransformRef} visible={false}>
+              {/* Basic geometry, doesn't really matter as it's invisible */} 
+              <boxGeometry args={[1, 1, 1]} /> 
+              <meshBasicMaterial wireframe />
+          </mesh>
+      </TransformControls>
+
       {/* Polygon Drawing Visualization */}
       {drawingMode === 'polygon' && (
         <>
@@ -932,7 +1193,7 @@ const MissionScene: React.FC<MissionSceneProps> = ({
       <OrbitControls 
         ref={controlsRef}
         makeDefault 
-        enabled={drawingMode === null && !isSelectingTakeoffPoint} 
+        enabled={drawingMode === null && !isSelectingTakeoffPoint && interactingObjectInfo === null} // Disable when drawing, selecting takeoff, OR interacting
         maxDistance={500}
         minDistance={5}
         enableDamping={true}
@@ -975,7 +1236,7 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
   liveDroneRotation 
 }) => {
   const { state, dispatch } = useMission(); // Get state for scene settings & dispatch
-  const { sceneSettings, hardware, isSimulating, simulationProgress, isLive, currentMission } = state; 
+  const { sceneSettings, hardware, isSimulating, simulationProgress, isLive, currentMission, editingSceneObjectId, editingGcpId } = state; 
 
   // State for the manual position control panel
   const [isPositionPanelOpen, setIsPositionPanelOpen] = useState(false);
@@ -1017,6 +1278,7 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
     isSimulating, 
     currentMission?.takeoffPoint, 
     // simulationProgress // Add dependency if sim position logic is added
+    // Add simDronePosition if integrated into context or passed down
   ]);
 
   // Determine current drone rotation (unaffected by this change)
@@ -1118,6 +1380,22 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
         initialCameraSettings={panelInitialCameraSettings} // Initialize with actual current settings
         onCameraSettingsChange={handleManualCameraSettingsChange}
       />
+
+      {/* Render the SceneObjectEditModal when an object is being edited */}
+      <SceneObjectEditModal
+        objectId={editingSceneObjectId || ''}
+        open={!!editingSceneObjectId}
+        onClose={() => dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: null })}
+      />
+
+      {/* Render the GcpEditModal when a GCP is being edited */}
+      {/* 
+      <GcpEditModal
+        gcpId={editingGcpId || ''} // Pass GCP ID 
+        open={!!editingGcpId}       // Control visibility
+        onClose={() => dispatch({ type: 'SET_EDITING_GCP_ID', payload: null })} // Action to close modal
+      />
+      */}
     </Paper>
   );
 };

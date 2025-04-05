@@ -1,8 +1,75 @@
 import React from 'react';
-import { Box, Typography, Button, Stack, Paper, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Stack, Paper, CircularProgress, TypographyProps } from '@mui/material';
 import { useAppContext } from '../../context/AppContext';
 import DeveloperModeIcon from '@mui/icons-material/DeveloperMode';
 import FlightIcon from '@mui/icons-material/Flight';
+import { styled } from '@mui/material/styles';
+
+// Styled components to match the dark theme industrial UI
+const StyledPaper = styled(Paper)(({ theme }) => ({
+    padding: theme.spacing(4),
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    backgroundColor: 'rgba(21, 21, 21, 0.97)',
+    color: theme.palette.common.white,
+    borderRadius: '4px',
+    boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.5)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    width: '100%',
+    maxWidth: '400px'
+}));
+
+const AppTitle = styled(Typography)(({ theme }) => ({
+    fontWeight: 600,
+    fontSize: '2.5rem',
+    letterSpacing: '2px',
+    marginBottom: theme.spacing(1),
+    color: '#4fc3f7', // Match the blue accent color used in other components
+    textTransform: 'uppercase'
+}));
+
+const SubTitle = styled(Typography)(({ theme }) => ({
+    fontSize: '0.95rem',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: theme.spacing(4),
+    letterSpacing: '0.5px'
+}));
+
+const StyledButton = styled(Button)(({ theme }) => ({
+    minWidth: '180px',
+    padding: theme.spacing(1.25),
+    borderRadius: '4px',
+    textTransform: 'uppercase',
+    fontWeight: 500,
+    fontSize: '0.85rem',
+    letterSpacing: '0.5px',
+    transition: 'all 0.2s ease-in-out',
+    '&:hover': {
+        transform: 'translateY(-2px)',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)'
+    }
+}));
+
+const DevButton = styled(StyledButton)(({ theme }) => ({
+    backgroundColor: '#ff3366', // Pink color to match the industrial screenshot
+    color: '#000',
+    '&:hover': {
+        backgroundColor: '#ff5c85',
+        transform: 'translateY(-2px)',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)'
+    }
+}));
+
+const OpsButton = styled(StyledButton)(({ theme }) => ({
+    backgroundColor: '#4fc3f7', // Blue accent color used in other components
+    color: '#000',
+    '&:hover': {
+        backgroundColor: '#81d4fa',
+        transform: 'translateY(-2px)',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)'
+    }
+}));
 
 const LaunchScreen: React.FC = () => {
     const { setAppMode } = useAppContext();
@@ -28,51 +95,43 @@ const LaunchScreen: React.FC = () => {
                 justifyContent: 'center', 
                 height: '100vh', 
                 width: '100vw',
-                bgcolor: 'background.default' // Use theme background
+                bgcolor: '#0c1419', // Very dark blue-gray background
+                backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(30, 40, 50, 0.4) 0%, rgba(12, 20, 25, 0.8) 100%)',
             }}
         >
-            <Paper 
-                elevation={3}
-                sx={{ 
-                    p: 4, 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center',
-                    borderRadius: 2
-                }}
-            >
-                <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+            <StyledPaper>
+                <AppTitle variant="h3">
                     OVERWATCH
-                </Typography>
-                <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 4 }}>
+                </AppTitle>
+                <SubTitle variant="subtitle1">
                     Select Operating Mode
-                </Typography>
+                </SubTitle>
                 
                 <Stack direction="row" spacing={3}>
-                    <Button 
+                    <DevButton 
                         variant="contained" 
-                        color="secondary" 
-                        size="large"
-                        startIcon={loading === 'dev' ? <CircularProgress size={20} color="inherit" /> : <DeveloperModeIcon />}
-                        onClick={() => handleSelectMode('dev')}
                         disabled={loading !== null}
-                        sx={{ minWidth: '200px', py: 1.5 }}
+                        onClick={() => handleSelectMode('dev')}
+                        startIcon={loading === 'dev' ? 
+                            <CircularProgress size={20} color="inherit" /> : 
+                            <DeveloperModeIcon />
+                        }
                     >
                         Developer
-                    </Button>
-                    <Button 
+                    </DevButton>
+                    <OpsButton 
                         variant="contained" 
-                        color="primary" 
-                        size="large"
-                        startIcon={loading === 'ops' ? <CircularProgress size={20} color="inherit" /> : <FlightIcon />}
-                        onClick={() => handleSelectMode('ops')}
                         disabled={loading !== null}
-                        sx={{ minWidth: '200px', py: 1.5 }}
+                        onClick={() => handleSelectMode('ops')}
+                        startIcon={loading === 'ops' ? 
+                            <CircularProgress size={20} color="inherit" /> : 
+                            <FlightIcon />
+                        }
                     >
                         Operations
-                    </Button>
+                    </OpsButton>
                 </Stack>
-            </Paper>
+            </StyledPaper>
         </Box>
     );
 };

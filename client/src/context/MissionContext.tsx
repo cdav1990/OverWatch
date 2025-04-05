@@ -13,7 +13,7 @@ import {
   SafetyParams
 } from '../types/mission';
 import { generateUUID } from '../utils/coordinateUtils';
-import { Camera, Lens, DroneModel, SensorType, CameraParameters } from '../types/hardware';
+import { Camera, Lens, DroneModel, SensorType } from '../types/hardware';
 import { AppMode, useAppContext } from './AppContext';
 import { getCameraById, getLensById, getCompatibleLenses, getDroneModelById, getLensFStops } from '../utils/hardwareDatabase';
 import { calculateSensorDimensions, calculateFOV } from '../utils/sensorCalculations';
@@ -33,7 +33,8 @@ export interface HardwareState {
     droneDetails: DroneModel | null;
     cameraDetails: Camera | null;
     lensDetails: Lens | null;
-    cameraParameters: CameraParameters | null; // Calculated camera params
+    // Calculated FOV (example - store as needed)
+    calculatedFov?: number; // Optional calculated FOV number
     availableFStops: number[]; // Available f-stops for the selected lens
 }
 
@@ -59,6 +60,7 @@ export interface SceneSettings {
 export interface SceneObject {
     id: string;
     type: 'box' | 'model' | 'area'; // Add other types as needed (e.g., 'cylinder', 'polygon')
+    class?: 'obstacle' | 'neutral' | 'asset'; // ADDED: Object classification
     width?: number;   // Optional, might not apply to all types
     length?: number;  // Optional
     height?: number;  // Optional
@@ -128,7 +130,8 @@ type MissionAction =
   | { type: 'ADD_SCENE_OBJECT'; payload: SceneObject }
   | { type: 'REMOVE_SCENE_OBJECT'; payload: string }
   | { type: 'UPDATE_SCENE_OBJECT'; payload: Partial<SceneObject> & { id: string } }
-  | { type: 'LOAD_MISSION'; payload: any };
+  | { type: 'LOAD_MISSION'; payload: any }
+  | { type: 'SET_EDITING_SCENE_OBJECT_ID'; payload: string | null };
 
 // Update the MissionState interface
 export interface MissionState {
@@ -170,6 +173,7 @@ export interface MissionState {
   sceneSettings: SceneSettings; // <-- Add scene settings state
   hardware: HardwareState | null; // <-- Add hardware state
   sceneObjects: SceneObject[]; // <-- Add scene objects array
+  editingSceneObjectId: string | null; // ADDED: Track object being edited
 }
 
 // Default Scene Settings
@@ -241,7 +245,6 @@ const DEFAULT_DEV_HARDWARE: HardwareState = {
     droneDetails: null, // Will be populated later
     cameraDetails: null,
     lensDetails: null,
-    cameraParameters: null,
     availableFStops: [],
 };
 
@@ -321,12 +324,13 @@ const initialState: MissionState = {
   },
   hardware: null,
   sceneObjects: [],
+  editingSceneObjectId: null, // ADDED
 };
 
 // Create the reducer
 function missionReducer(state: MissionState, action: MissionAction): MissionState {
-  // --- ADD LOG FOR ALL ACTIONS (Optional but helpful for debugging) ---
-  // console.log(`[MissionReducer] Action: ${action.type}`, action);
+  // FIX: Log payload only if it exists
+  console.log(`[MissionContext] Action: ${action.type}`, ('payload' in action) ? action.payload : '(no payload)'); 
   
   switch (action.type) {
     case 'SET_MISSION':
@@ -996,96 +1000,70 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
         if (!state.hardware) return state; 
 
         const { field, value } = action.payload;
-        // Create a mutable copy typed correctly
         let updatedHardware: HardwareState = { ...state.hardware };
+        let recalculateFov = false;
 
-        // Handle cascading updates for camera/lens changes
         if (field === 'camera') {
             const newCameraId = value as string | null;
             updatedHardware.camera = newCameraId;
-            updatedHardware.cameraDetails = newCameraId ? getCameraById(newCameraId) : null;
-            // Reset lens and related params when camera changes
+            // Ensure lookup defaults to null
+            updatedHardware.cameraDetails = newCameraId ? (getCameraById(newCameraId) ?? null) : null;
+            // Reset lens and related params
             updatedHardware.lens = null;
             updatedHardware.lensDetails = null;
             updatedHardware.availableFStops = [];
             updatedHardware.fStop = null;
-            updatedHardware.cameraParameters = null;
-            // If a camera is selected, check compatible lenses
-            if (newCameraId) {
-                const compatible = getCompatibleLenses(newCameraId);
-                // Optionally auto-select the first compatible lens
-                // if (compatible.length > 0) {
-                //     updatedHardware.lens = compatible[0].id;
-                //     updatedHardware.lensDetails = compatible[0];
-                //     updatedHardware.availableFStops = getLensFStops(compatible[0]);
-                //     updatedHardware.fStop = updatedHardware.availableFStops[0] ?? null;
-                // }
-            }
+            updatedHardware.calculatedFov = undefined; // Reset calculated FOV
+            recalculateFov = !!(updatedHardware.cameraDetails && updatedHardware.lensDetails);
         } else if (field === 'lens') {
             const newLensId = value as string | null;
             updatedHardware.lens = newLensId;
-            updatedHardware.lensDetails = newLensId ? getLensById(newLensId) : null;
+             // Ensure lookup defaults to null
+            updatedHardware.lensDetails = newLensId ? (getLensById(newLensId) ?? null) : null;
             updatedHardware.availableFStops = updatedHardware.lensDetails ? getLensFStops(updatedHardware.lensDetails) : [];
-            // Reset fStop if current is not available or no lens selected
+            // Reset fStop if needed
             if (!newLensId || !updatedHardware.availableFStops.includes(updatedHardware.fStop as number)) {
                 updatedHardware.fStop = updatedHardware.availableFStops[0] ?? null;
             }
-            // Recalculate camera params if possible
-            if (updatedHardware.cameraDetails && updatedHardware.lensDetails) {
-                const sensorDimensions = calculateSensorDimensions(updatedHardware.cameraDetails, updatedHardware.lensDetails);
-                const fov = calculateFOV(updatedHardware.lensDetails.focalLength, sensorDimensions.width);
-                updatedHardware.cameraParameters = {
-                    sensorWidth: sensorDimensions.width,
-                    sensorHeight: sensorDimensions.height,
-                    focalLength: updatedHardware.lensDetails.focalLength,
-                    fovHorizontal: fov.horizontal,
-                    fovVertical: fov.vertical,
-                };
-            } else {
-                updatedHardware.cameraParameters = null;
-            }
+            recalculateFov = !!(updatedHardware.cameraDetails && updatedHardware.lensDetails);
         } else if (field === 'drone') {
             updatedHardware.drone = value as string | null;
-            updatedHardware.droneDetails = updatedHardware.drone ? getDroneModelById(updatedHardware.drone) : null;
+             // Ensure lookup defaults to null
+            updatedHardware.droneDetails = updatedHardware.drone ? (getDroneModelById(updatedHardware.drone) ?? null) : null;
         } else if (field === 'fStop' || field === 'iso') {
              const numValue = value !== null && value !== '' ? Number(value) : null;
              updatedHardware[field] = numValue;
         } else if (field === 'focusDistance') {
-             // Ensure focusDistance is always a number, defaulting if invalid
              const numValue = Number(value);
-             updatedHardware[field] = isNaN(numValue) ? state.hardware.focusDistance : numValue; // Keep old value if invalid
+             updatedHardware[field] = isNaN(numValue) ? state.hardware.focusDistance : numValue;
         } else if (field === 'shutterSpeed') {
             updatedHardware[field] = value ? String(value) : null;
         } else {
-            // Handle other simple fields like 'lidar', 'sensorType'
-            if (field in updatedHardware) {
+             if (field in updatedHardware) {
                  (updatedHardware as any)[field] = value;
-            }
+             }
         }
         
-        // Recalculate camera params after any relevant change (camera, lens, fStop, focusDistance could potentially affect it in future)
-        // Moved the calculation inside lens update, but could be abstracted
-        if (!updatedHardware.cameraDetails || !updatedHardware.lensDetails) {
-             updatedHardware.cameraParameters = null;
-        } else if (!updatedHardware.cameraParameters) { // Recalculate if null
+        // Recalculate FOV if needed
+        if (recalculateFov && updatedHardware.cameraDetails && updatedHardware.lensDetails) {
             const sensorDimensions = calculateSensorDimensions(updatedHardware.cameraDetails, updatedHardware.lensDetails);
-            const fov = calculateFOV(updatedHardware.lensDetails.focalLength, sensorDimensions.width);
-            updatedHardware.cameraParameters = {
-                sensorWidth: sensorDimensions.width,
-                sensorHeight: sensorDimensions.height,
-                focalLength: updatedHardware.lensDetails.focalLength,
-                fovHorizontal: fov.horizontal,
-                fovVertical: fov.vertical,
-            };
+            // FIX: Handle focalLength potentially being a range
+            const focalLengthToUse = typeof updatedHardware.lensDetails.focalLength === 'number' 
+                                        ? updatedHardware.lensDetails.focalLength 
+                                        : updatedHardware.lensDetails.focalLength[0]; // Use min value for zoom lens FOV calc?
+            const fovResult = calculateFOV(focalLengthToUse, sensorDimensions.width);
+            // FIX: Assume calculateFOV returns a number (e.g., horizontal or vertical FOV) - adjust if it returns object
+            updatedHardware.calculatedFov = typeof fovResult === 'number' ? fovResult : undefined; 
+        } else if (!updatedHardware.cameraDetails || !updatedHardware.lensDetails) {
+             updatedHardware.calculatedFov = undefined;
         }
 
         return { ...state, hardware: updatedHardware };
     }
     
     case 'ADD_SCENE_OBJECT': {
-        // Prevent adding duplicates by ID
         if (state.sceneObjects.some(obj => obj.id === action.payload.id)) {
-            console.warn(`Scene object with ID ${action.payload.id} already exists. Ignoring.`);
+            console.warn(`SceneObject with ID ${action.payload.id} already exists.`);
             return state;
         }
         return {
@@ -1104,9 +1082,19 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     case 'UPDATE_SCENE_OBJECT': {
         return {
             ...state,
-            sceneObjects: state.sceneObjects.map(obj =>
-                obj.id === action.payload.id ? { ...obj, ...action.payload } : obj
-            )
+            sceneObjects: state.sceneObjects.map(obj => 
+                obj.id === action.payload.id 
+                    ? { ...obj, ...action.payload } // Merge updates
+                    : obj
+            ),
+            editingSceneObjectId: null, // Optionally close editor on update
+        };
+    }
+    
+    case 'SET_EDITING_SCENE_OBJECT_ID': {
+        return {
+            ...state,
+            editingSceneObjectId: action.payload,
         };
     }
     
@@ -1168,4 +1156,18 @@ export function useMission() {
     throw new Error('useMission must be used within a MissionProvider');
   }
   return context;
-} 
+}
+
+// ADD Action to start/stop editing
+export const startEditSceneObject = (dispatch: Dispatch<MissionAction>, objectId: string) => {
+   // In a real implementation, this might dispatch an action like:
+   // dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: objectId });
+   // For now, we'll just log it as the state isn't fully implemented yet.
+   console.log(`[MissionContext] Placeholder: Start editing object ${objectId}`);
+   // We would also need state like `isEditModalOpen` managed here or locally.
+};
+
+export const finishEditSceneObject = (dispatch: Dispatch<MissionAction>) => {
+   // dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: null });
+   console.log(`[MissionContext] Placeholder: Finish editing object`);
+}; 
