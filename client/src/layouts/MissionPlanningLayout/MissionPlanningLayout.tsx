@@ -55,14 +55,14 @@ import HardwareSelectionModal from '../../components/HardwareSelection/HardwareS
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; // <-- Add icon for Accordion
 import SceneSettingsPanel from '../../components/SceneControls/SceneSettingsPanel'; // Revert to the original import path based on error context
 import TimelineControls from '../../components/TimelineControls/TimelineControls'; // <-- Import TimelineControls
-import Local3DViewer from '../../components/Local3DViewer/Local3DViewer';
+import Local3DViewer from '../../components/Local3DViewer';
 import AssetTree from '../../components/AssetTree/AssetTree';
 import BuildSceneStep from '../../pages/MissionPage/Steps/BuildSceneStep';
 
 // Context and Step Components
 import { useMission } from '../../context/MissionContext';
 import MissionPreChecksStep from '../../pages/MissionPage/Steps/MissionPreChecksStep';
-import RasterPatternStep from '../../pages/MissionPage/Steps/RasterPatternStep';
+import MissionPlanningStep from '../../pages/MissionPage/Steps/MissionPlanningStep';
 import { PathType } from '../../types/mission'; // <-- Import PathType
 import { useThemeContext } from '../../context/ThemeContext/ThemeContext'; // Import theme context hook
 import { SceneSettings, HardwareState } from '../../context/MissionContext'; // Import types
@@ -91,7 +91,7 @@ const MissionPlanningLayout: React.FC = () => {
     // REVISED handler for ToggleButtonGroup
     const handlePaneChange = (
         event: React.MouseEvent<HTMLElement>,
-        newPane: 'pre-checks' | 'build-scene' | 'raster-pattern' | null, // MUI provides null if deselected
+        newPane: 'pre-checks' | 'build-scene' | 'mission-planning' | null, // MUI provides null if deselected
     ) => {
         const currentPane = missionState.activeControlPane; // Get current state value
 
@@ -259,8 +259,8 @@ const MissionPlanningLayout: React.FC = () => {
                                 <CategoryIcon sx={{ mr: 0.5, fontSize: '1rem' }}/> Build Scene
                             </ToggleButton>
                             {/* RENAMED Controls to Mission Tools */}
-                            <ToggleButton value="raster-pattern" aria-label="Mission Tools">
-                                <RouteIcon sx={{ mr: 0.5, fontSize: '1rem' }}/> Mission Tools
+                            <ToggleButton value="mission-planning" aria-label="Mission Planning">
+                                <RouteIcon sx={{ mr: 0.5, fontSize: '1rem' }}/> Mission Planning
                             </ToggleButton>
                         </ToggleButtonGroup>
                         
@@ -389,7 +389,7 @@ const MissionPlanningLayout: React.FC = () => {
                         {/* Only render content if pane is active and open */}
                         {isLeftPanelOpen && activeControlPane === 'pre-checks' && <MissionPreChecksStep />} 
                         {isLeftPanelOpen && activeControlPane === 'build-scene' && <BuildSceneStep />} 
-                        {isLeftPanelOpen && activeControlPane === 'raster-pattern' && <RasterPatternStep />} 
+                        {isLeftPanelOpen && activeControlPane === 'mission-planning' && <MissionPlanningStep />} 
                     </Box>
                     
                     {/* Hardware Button at bottom of left panel - only show if panel is open */}

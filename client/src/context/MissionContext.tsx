@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode, useEffect, Dispatch } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, Dispatch, useMemo } from 'react';
 import { 
   Mission, 
   Waypoint, 
@@ -16,7 +16,8 @@ import { generateUUID } from '../utils/coordinateUtils';
 import { Camera, Lens, DroneModel, SensorType } from '../types/hardware';
 import { AppMode, useAppContext } from './AppContext';
 import { getCameraById, getLensById, getCompatibleLenses, getDroneModelById, getLensFStops } from '../utils/hardwareDatabase';
-import { calculateSensorDimensions, calculateFOV } from '../utils/sensorCalculations';
+import { calculateSensorDimensions, calculateFOV, feetToMeters } from '../utils/sensorCalculations';
+import * as THREE from 'three';
 
 // Define Hardware State Type
 export interface HardwareState {
@@ -42,11 +43,11 @@ export interface HardwareState {
 export interface SceneSettings {
   gridSize: number;
   gridDivisions: number;
+  gridUnit: 'meters' | 'feet'; // Add unit option for the grid
   fov: number;
   backgroundColor: string; // Hex color string e.g., '#ffffff'
   gridColorCenterLine: string;
   gridColorGrid: string;
-  // New Settings
   gridVisible: boolean;
   gridFadeDistance: number;
   ambientLightIntensity: number;
@@ -71,6 +72,30 @@ export interface SceneObject {
     points?: LocalCoord[]; // For polygons/areas
     createdAt: string;
     source: string; // Where it originated (e.g., 'build-scene-ui', 'import')
+}
+
+// Interface for selected face information
+export interface SelectedFaceInfo {
+  objectId: string;
+  faceId: string;
+  faceIndex: number;
+  normal: THREE.Vector3;
+  vertices: THREE.Vector3[];
+  area: number;
+}
+
+// Interface for mission area definition
+export interface MissionArea {
+  id: string;
+  name: string;
+  objectId: string;
+  faceId: string;
+  area: number;                    // Area in square meters
+  vertices: THREE.Vector3[];       // Original face vertices
+  offsetVertices: THREE.Vector3[]; // Vertices offset from the face by 5'
+  normal: THREE.Vector3;           // Face normal vector
+  color: string;                   // Color for visualization
+  createdAt: string;
 }
 
 // Define action types
@@ -123,7 +148,7 @@ type MissionAction =
   | { type: 'TOGGLE_DRONE_VISIBILITY' }
   | { type: 'TOGGLE_CAMERA_FRUSTUM_VISIBILITY' }
   | { type: 'TOGGLE_GCP_VISIBILITY'; payload: string }
-  | { type: 'SET_ACTIVE_CONTROL_PANE'; payload: 'pre-checks' | 'build-scene' | 'raster-pattern' }
+  | { type: 'SET_ACTIVE_CONTROL_PANE'; payload: 'pre-checks' | 'build-scene' | 'mission-planning' }
   | { type: 'UPDATE_SCENE_SETTINGS'; payload: Partial<SceneSettings> }
   | { type: 'SET_HARDWARE'; payload: Partial<HardwareState> }
   | { type: 'UPDATE_HARDWARE_FIELD'; payload: { field: keyof HardwareState; value: any } }
@@ -131,7 +156,13 @@ type MissionAction =
   | { type: 'REMOVE_SCENE_OBJECT'; payload: string }
   | { type: 'UPDATE_SCENE_OBJECT'; payload: Partial<SceneObject> & { id: string } }
   | { type: 'LOAD_MISSION'; payload: any }
-  | { type: 'SET_EDITING_SCENE_OBJECT_ID'; payload: string | null };
+  | { type: 'SET_EDITING_SCENE_OBJECT_ID'; payload: string | null }
+  | { type: 'SET_SELECTED_FACE'; payload: SelectedFaceInfo | null }
+  | { type: 'TOGGLE_FACE_SELECTION_MODE'; payload: boolean }
+  // Actions for mission areas
+  | { type: 'ADD_MISSION_AREA'; payload: MissionArea }
+  | { type: 'REMOVE_MISSION_AREA'; payload: string }
+  | { type: 'UPDATE_MISSION_AREA'; payload: Partial<MissionArea> & { id: string } };
 
 // Update the MissionState interface
 export interface MissionState {
@@ -165,7 +196,7 @@ export interface MissionState {
   drawingMode: 'polygon' | null;
   polygonPoints: LocalCoord[];
   polygonPreviewPoint: LocalCoord | null;
-  activeControlPane: 'pre-checks' | 'build-scene' | 'raster-pattern';
+  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning';
   isSelectingTakeoffPoint: boolean; // Added state for selection mode
   isDroneVisible: boolean; // <-- Add drone visibility state
   isCameraFrustumVisible: boolean; // <-- Add camera visibility state
@@ -174,17 +205,20 @@ export interface MissionState {
   hardware: HardwareState | null; // <-- Add hardware state
   sceneObjects: SceneObject[]; // <-- Add scene objects array
   editingSceneObjectId: string | null; // ADDED: Track object being edited
+  selectedFace: SelectedFaceInfo | null; // ADDED: Track selected face information
+  isFaceSelectionModeActive: boolean; // ADDED: Track whether face selection mode is active
+  missionAreas: MissionArea[]; // NEW: Track mission areas created from faces
 }
 
 // Default Scene Settings
 const defaultLightSceneSettings: SceneSettings = {
     gridSize: 200,
     gridDivisions: 20,
+    gridUnit: 'meters', // Default to meters
     fov: 50,
     backgroundColor: '#e0e0e0', // Light grey background
     gridColorCenterLine: '#888888',
     gridColorGrid: '#cccccc',
-    // Add Missing Defaults
     gridVisible: true,
     gridFadeDistance: 25,
     ambientLightIntensity: 0.6,
@@ -197,11 +231,11 @@ const defaultLightSceneSettings: SceneSettings = {
 const defaultDarkSceneSettings: SceneSettings = {
     gridSize: 200,
     gridDivisions: 20,
+    gridUnit: 'meters', // Default to meters
     fov: 50,
     backgroundColor: '#121212', // Darker background
     gridColorCenterLine: '#333333',
     gridColorGrid: '#1e1e1e',
-    // Add Missing Defaults
     gridVisible: true,
     gridFadeDistance: 25,
     ambientLightIntensity: 0.25, // Reduced ambient in dark
@@ -270,7 +304,7 @@ const DEFAULT_DEV_MISSION: Mission = {
     takeoffPoint: { x: 0, y: 0, z: 0 }, // Default takeoff at origin
     safetyParams: {
         rtlAltitude: 50,
-        climbSpeed: 2.0,
+        climbSpeed: 2.5,
         failsafeAction: 'RTL',
         missionEndAction: 'RTL',
     },
@@ -279,6 +313,8 @@ const DEFAULT_DEV_MISSION: Mission = {
     localOrigin: DEFAULT_DEV_REGION.center, // Crucial: Set localOrigin
 };
 // --- >>> END DEV MODE <<< ---
+
+const DEFAULT_FOCUS_DISTANCE_FT = 20; // Added default constant
 
 const initialState: MissionState = {
   currentMission: null,
@@ -302,7 +338,7 @@ const initialState: MissionState = {
   drawingMode: null,
   polygonPoints: [],
   polygonPreviewPoint: null,
-  activeControlPane: 'pre-checks',
+  activeControlPane: 'mission-planning',
   isSelectingTakeoffPoint: false,
   isDroneVisible: true,
   isCameraFrustumVisible: true,
@@ -310,6 +346,7 @@ const initialState: MissionState = {
   sceneSettings: {
       gridSize: 200,
       gridDivisions: 20,
+      gridUnit: 'meters', // Default to meters
       fov: 50,
       backgroundColor: '#121212', // Default to dark theme initially
       gridColorCenterLine: '#333333',
@@ -324,7 +361,10 @@ const initialState: MissionState = {
   },
   hardware: null,
   sceneObjects: [],
-  editingSceneObjectId: null, // ADDED
+  editingSceneObjectId: null,
+  selectedFace: null,
+  isFaceSelectionModeActive: false,
+  missionAreas: [], // Initialize with empty array
 };
 
 // Create the reducer
@@ -349,40 +389,46 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
       const { name, region } = action.payload;
       const now = new Date();
       
-      // Create default GCPs (15' triangle ~ 4.57m)
+      // Create default GCPs - always center scene at GCP-A (0,0,0)
+      // Use a triangle with GCP-A at the center/origin
       const feetToMeters = 0.3048;
-      const sideLength = 15 * feetToMeters; 
+      const sideLength = 15 * feetToMeters; // 15 feet in meters
       const defaultGcpPoints: Array<{ name: string; x: number; y: number; z: number }> = [
-        { name: 'GCP-A', x: 0, y: 0, z: 0 }, // Origin GCP
-        { name: 'GCP-B', x: sideLength, y: 0, z: 0 }, // Along X axis
-        { name: 'GCP-C', x: sideLength / 2, y: Math.sqrt(3) * sideLength / 2, z: 0 }, // Equilateral triangle point
+        { name: 'GCP-A', x: 0, y: 0, z: 0 }, // Origin GCP - Center of the scene
+        { name: 'GCP-B', x: sideLength, y: 0, z: 0 }, // To the right (East) of GCP-A
+        { name: 'GCP-C', x: 0, y: sideLength, z: 0 }, // To the front (North) of GCP-A
       ];
+
+      // Create GCP objects
       const defaultGcps: GCP[] = defaultGcpPoints.map(p => ({
         id: generateUUID(),
         name: p.name,
         lat: 0, lng: 0, altitude: 0, // Global coords TBD/calculated later if needed
         local: { x: p.x, y: p.y, z: p.z },
-        color: '#00ff00', size: 1,
+        color: p.name === 'GCP-A' ? '#ff0000' : '#00ff00', // Make GCP-A red for visibility
+        size: p.name === 'GCP-A' ? 1.5 : 1, // Make GCP-A slightly larger
       }));
 
       const newMission: Mission = {
         id: generateUUID(),
-        name,
-        region,
+        name: name || 'New Mission',
+        region: region,
         pathSegments: [],
-        gcps: defaultGcps, // Add default GCPs
-        defaultAltitude: 50, 
-        defaultSpeed: 5, 
-        takeoffPoint: null, // Initialize takeoff point
-        safetyParams: { // Initialize default safety params
-          rtlAltitude: 100, // Default RTL Altitude (meters)
-          climbSpeed: 2.0, // Default climb speed (m/s)
-          failsafeAction: 'RTL', // Default action
-          missionEndAction: 'RTL', // Default action
-        },
+        gcps: defaultGcps,
+        defaultAltitude: 50, // Default altitude (meters AGL)
+        defaultSpeed: 5, // Default speed (m/s)
         createdAt: now,
         updatedAt: now,
         localOrigin: region.center,
+        // Set default takeoff point at the center (GCP-A location)
+        takeoffPoint: { x: 0, y: 0, z: 0 },
+        // Add default safety parameters
+        safetyParams: {
+          rtlAltitude: 50, // Meters
+          climbSpeed: 2.5, // m/s
+          failsafeAction: 'RTL', // Default action on failsafe
+          missionEndAction: 'RTL' // Default action at mission end
+        }
       };
       
       const nextState: MissionState = {
@@ -963,37 +1009,89 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     }
     
     case 'SET_HARDWARE': {
-        // Ensure details are populated if only IDs were passed
-        let fullPayload: Partial<HardwareState> = { ...action.payload };
-        
-        // Define defaults for potentially missing optional fields
-        const defaults: Partial<HardwareState> = {
-            fStop: 5.6,
-            focusDistance: 10,
-            shutterSpeed: '1/1000',
-            iso: 100,
-        };
+      console.log("[MissionContext] Reducer: SET_HARDWARE - Payload:", action.payload);
+      // Provide a default structure if state.hardware is null
+      const currentHardware: Partial<HardwareState> = state.hardware ?? { 
+        drone: null, lidar: null, camera: null, lens: null, 
+        sensorType: null, fStop: null, focusDistance: feetToMeters(DEFAULT_FOCUS_DISTANCE_FT), // Default focus distance
+        shutterSpeed: null, iso: null, droneDetails: null, 
+        cameraDetails: null, lensDetails: null, availableFStops: [] 
+      };
+      const newPartialHardware = action.payload;
 
-        // Merge payload with defaults, only adding defaults if the key is missing in the payload
-        let mergedPayload = { ...defaults, ...fullPayload };
-        
-        // Populate details based on IDs if needed
-        if (mergedPayload.camera && !mergedPayload.cameraDetails) {
-            mergedPayload.cameraDetails = getCameraById(mergedPayload.camera);
-        }
-        if (mergedPayload.lens && !mergedPayload.lensDetails) {
-            mergedPayload.lensDetails = getLensById(mergedPayload.lens);
-        }
-        // Add drone details if missing (optional)
-        // if (mergedPayload.drone && !mergedPayload.droneDetails) {
-        //     mergedPayload.droneDetails = getDroneModelById(mergedPayload.drone);
-        // }
+      let updatedHardware: Partial<HardwareState> = { 
+        ...currentHardware, 
+        ...newPartialHardware 
+      };
 
-        return {
-            ...state,
-            // Ensure the final hardware state matches the HardwareState interface fully
-            hardware: mergedPayload as HardwareState 
-        };
+      // If camera ID changed or doesn't exist, fetch details
+      if (newPartialHardware.camera !== undefined || !updatedHardware.cameraDetails) {
+          const camId = updatedHardware.camera;
+          updatedHardware.cameraDetails = camId ? getCameraById(camId) : null;
+          console.log(`[MissionContext] Reducer: SET_HARDWARE - Fetched Camera Details for ID ${camId}:`, updatedHardware.cameraDetails);
+          // FIX: Only reset lens if camera ID changes *and* there was a previous camera ID
+          if (currentHardware.camera && currentHardware.camera !== updatedHardware.camera) { 
+              console.log(`[MissionContext] Reducer: SET_HARDWARE - Camera changed from ${currentHardware.camera} to ${updatedHardware.camera}. Resetting lens.`);
+              updatedHardware.lens = null;
+              updatedHardware.lensDetails = null;
+              updatedHardware.fStop = null;
+              updatedHardware.availableFStops = [];
+          }
+      }
+
+      // If lens ID changed or doesn't exist (and camera exists), fetch details
+      if ((newPartialHardware.lens !== undefined || !updatedHardware.lensDetails) && updatedHardware.cameraDetails) {
+          const lensId = updatedHardware.lens;
+          updatedHardware.lensDetails = lensId ? getLensById(lensId) : null;
+          console.log(`[MissionContext] Reducer: SET_HARDWARE - Fetched Lens Details for ID ${lensId}:`, updatedHardware.lensDetails);
+
+          // FIX: Only update f-stop defaults if lens *actually* changed from a previous lens, or if fStop is missing
+          const lensDidChange = currentHardware.lens !== updatedHardware.lens;
+          const fStopIsMissing = !updatedHardware.fStop;
+
+          if (updatedHardware.lensDetails && (lensDidChange || fStopIsMissing)) {
+              console.log(`[MissionContext] Reducer: SET_HARDWARE - Lens changed (${lensDidChange}) or fStop missing (${fStopIsMissing}). Updating f-stops.`);
+              try {
+                  const fStops = getLensFStops(updatedHardware.lensDetails);
+                  updatedHardware.availableFStops = fStops.filter(s => !isNaN(s)).sort((a, b) => a - b);
+                  // Set default fStop to lowest available only if fStop is currently missing or lens changed
+                  if (updatedHardware.availableFStops.length > 0 && (lensDidChange || fStopIsMissing)) { 
+                     updatedHardware.fStop = updatedHardware.availableFStops[0];
+                     console.log(`[MissionContext] Reducer: SET_HARDWARE - Setting default fStop: ${updatedHardware.fStop}`);
+                  } else if (updatedHardware.availableFStops.length === 0) {
+                      updatedHardware.fStop = null; // No valid stops
+                  }
+              } catch (error) {
+                  console.error("Error setting f-stops:", error);
+                  updatedHardware.availableFStops = [];
+                  updatedHardware.fStop = null;
+              }
+          } else if (!updatedHardware.lensDetails) {
+              // If lens is null, clear f-stops
+              updatedHardware.availableFStops = [];
+              updatedHardware.fStop = null;
+          }
+      }
+      
+      // Ensure focus distance exists, default if necessary
+      if (updatedHardware.focusDistance === undefined || updatedHardware.focusDistance === null) {
+          updatedHardware.focusDistance = feetToMeters(DEFAULT_FOCUS_DISTANCE_FT); // Default in meters
+          console.log(`[MissionContext] Reducer: SET_HARDWARE - Setting default focusDistance: ${updatedHardware.focusDistance}m`);
+      }
+
+      // Ensure drone details are populated if ID exists
+      if (newPartialHardware.drone !== undefined || !updatedHardware.droneDetails) {
+          const droneId = updatedHardware.drone;
+          updatedHardware.droneDetails = droneId ? getDroneModelById(droneId) : null;
+          console.log(`[MissionContext] Reducer: SET_HARDWARE - Fetched Drone Details for ID ${droneId}:`, updatedHardware.droneDetails);
+      }
+
+      console.log("[MissionContext] Reducer: SET_HARDWARE - Final updatedHardware state:", updatedHardware);
+
+      return { 
+        ...state, 
+        hardware: updatedHardware as HardwareState // Assert final type
+      };
     }
     
     case 'UPDATE_HARDWARE_FIELD': {
@@ -1098,10 +1196,48 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
         };
     }
     
+    case 'SET_SELECTED_FACE':
+      return {
+        ...state,
+        selectedFace: action.payload,
+        // When a face is selected, automatically disable face selection mode
+        isFaceSelectionModeActive: action.payload !== null
+      };
+    
     case 'LOAD_MISSION': {
         // Add logic to merge mission data, potentially resetting other state parts
         return { ...state, currentMission: action.payload };
     }
+    
+    case 'TOGGLE_FACE_SELECTION_MODE':
+      return {
+        ...state,
+        isFaceSelectionModeActive: action.payload,
+        // Clear selected face when disabling face selection mode
+        ...(action.payload === false ? { selectedFace: null } : {})
+      };
+    
+    case 'ADD_MISSION_AREA':
+      return {
+        ...state,
+        missionAreas: [...state.missionAreas, action.payload]
+      };
+    
+    case 'REMOVE_MISSION_AREA':
+      return {
+        ...state,
+        missionAreas: state.missionAreas.filter(area => area.id !== action.payload)
+      };
+    
+    case 'UPDATE_MISSION_AREA':
+      return {
+        ...state,
+        missionAreas: state.missionAreas.map(area => 
+          area.id === action.payload.id 
+            ? { ...area, ...action.payload } 
+            : area
+        )
+      };
     
     default:
       return state;
@@ -1127,19 +1263,49 @@ export const MissionProvider: React.FC<MissionProviderProps> = ({ children }) =>
 
     // --- Load Default Mission Effect based on AppContext ---
     useEffect(() => {
-        // Check if appMode is 'dev' and if no mission is currently loaded
-        if (appMode === 'dev' && !state.currentMission) {
+        // Check if appMode is 'dev' and if no mission or no hardware is currently loaded
+        if (appMode === 'dev' && (!state.currentMission || !state.hardware)) {
             console.warn("[Dev Mode] App mode set to 'dev'. Loading default mission and hardware..."); 
-            // Dispatch both mission and hardware defaults
-            dispatch({ type: 'SET_MISSION', payload: DEFAULT_DEV_MISSION });
-            dispatch({ type: 'SET_HARDWARE', payload: DEFAULT_DEV_HARDWARE });
-        }
-        // Optional: Add logic here to reset state if mode changes from dev?
-        // else if (appMode === 'ops' && state.currentMission?.id === DEFAULT_DEV_MISSION.id) {
-        //     // Reset if switching to ops and the dev mission is loaded?
-        // }
+            
+            // Load default mission if needed
+            if (!state.currentMission) {
+                dispatch({ type: 'SET_MISSION', payload: DEFAULT_DEV_MISSION });
+                console.log("[Dev Mode] Dispatched SET_MISSION with default.");
+            }
 
-    }, [appMode, state.currentMission]); // Re-run if appMode or mission state changes
+            // Load default hardware if needed
+            if (!state.hardware) {
+                const defaultCamera = getCameraById(DEFAULT_DEV_HARDWARE.camera!);
+                const defaultLens = getLensById(DEFAULT_DEV_HARDWARE.lens!);
+                const defaultDrone = getDroneModelById(DEFAULT_DEV_HARDWARE.drone!);
+                const defaultFStops = defaultLens ? getLensFStops(defaultLens).filter(s => !isNaN(s)).sort((a,b) => a-b) : [];
+                const defaultFStop = defaultFStops.length > 0 ? defaultFStops[0] : null;
+                
+                console.log("[Dev Mode] Preparing default hardware object:", {
+                    ...DEFAULT_DEV_HARDWARE,
+                    cameraDetails: defaultCamera,
+                    lensDetails: defaultLens,
+                    droneDetails: defaultDrone,
+                    availableFStops: defaultFStops,
+                    fStop: defaultFStop, // Ensure default fStop is included
+                });
+
+                dispatch({
+                    type: 'SET_HARDWARE', 
+                    payload: {
+                        ...DEFAULT_DEV_HARDWARE,
+                        cameraDetails: defaultCamera,
+                        lensDetails: defaultLens,
+                        droneDetails: defaultDrone,
+                        availableFStops: defaultFStops,
+                        fStop: defaultFStop, // Pass calculated default fStop
+                        // focusDistance is already set in meters in DEFAULT_DEV_HARDWARE
+                    }
+                });
+                console.log("[Dev Mode] Dispatched SET_HARDWARE with default.");
+            }
+        }
+    }, [appMode, state.currentMission, state.hardware, dispatch]); // Add state.hardware dependency
     // --- End Load Default Mission Effect ---
 
     return (
