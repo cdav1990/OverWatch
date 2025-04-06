@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { ThemeProvider } from './context/ThemeContext/ThemeContext';
 import { MissionProvider } from './context/MissionContext';
@@ -11,6 +11,36 @@ import GeoPage from './pages/GeoPage/GeoPage';
 import LaunchScreen from './components/LaunchScreen/LaunchScreen';
 import './App.css';
 
+// Title updater component that runs on route changes
+const TitleUpdater = () => {
+  const location = useLocation();
+  
+  useEffect(() => {
+    // Set default title suffix
+    let title = "OVERWATCH";
+    
+    // Add section name based on current path
+    if (location.pathname === "/") {
+      title = "Dashboard | OVERWATCH";
+    } else if (location.pathname.startsWith("/geo")) {
+      title = "Geo | OVERWATCH";
+    } else if (location.pathname.startsWith("/mission")) {
+      title = "Mission Planning | OVERWATCH";
+    } else if (location.pathname.startsWith("/telemetry")) {
+      title = "Telemetry | OVERWATCH";
+    } else if (location.pathname.startsWith("/control")) {
+      title = "Control | OVERWATCH";
+    } else if (location.pathname.startsWith("/settings")) {
+      title = "Settings | OVERWATCH";
+    }
+    
+    // Update document title
+    document.title = title;
+  }, [location]);
+  
+  return null; // This component doesn't render anything
+};
+
 // Main application content component
 const MainApp: React.FC = () => {
   const { appMode } = useAppContext();
@@ -21,6 +51,7 @@ const MainApp: React.FC = () => {
 
   return (
     <AppLayout>
+      <TitleUpdater />
       <Box component="main" sx={{ flexGrow: 1, width: '100%', height: 'calc(100vh - 64px)', overflow: 'auto' }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />

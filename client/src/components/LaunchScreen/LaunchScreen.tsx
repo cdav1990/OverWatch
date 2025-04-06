@@ -244,6 +244,14 @@ const SpinningLogo = styled(Box)(({ theme }) => ({
 const LaunchScreen: React.FC = () => {
     const { setAppMode } = useAppContext();
 
+    // Set document title for launch screen
+    useEffect(() => {
+        document.title = "OVERWATCH";
+        return () => {
+            // Title will be updated by TitleUpdater after mode selection
+        };
+    }, []);
+
     // Loading state for initial app load
     const [initialLoading, setInitialLoading] = React.useState(true);
     
