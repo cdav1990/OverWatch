@@ -1,4 +1,13 @@
 {
+  "name": "overwatch",
+  "version": "1.0.0",
+  "description": "Overwatch Mission Planning Platform",
+  "scripts": {
+    "dev": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "preview": "cd client && npm run preview",
+    "start": "cd client && npm run dev"
+  },
   "dependencies": {
     "@mui/x-tree-view": "^7.28.1",
     "@react-three/drei": "^10.0.5",
