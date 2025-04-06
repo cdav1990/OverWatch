@@ -3,6 +3,14 @@ import MenuIcon from '@mui/icons-material/Menu';
 import { useState } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useThemeContext } from '../../context/ThemeContext/ThemeContext';
+import { styled, keyframes } from '@mui/material/styles';
+
+// Add subtle pulse animation for navbar logo
+const subtlePulse = keyframes`
+  0% { text-shadow: 0 0 5px rgba(79, 195, 247, 0.2); }
+  50% { text-shadow: 0 0 10px rgba(79, 195, 247, 0.4); }
+  100% { text-shadow: 0 0 5px rgba(79, 195, 247, 0.2); }
+`;
 
 interface NavbarProps {
   onMenuToggle?: () => void;
@@ -70,12 +78,17 @@ const Navbar = ({ onMenuToggle }: NavbarProps) => {
               display: 'flex', 
               alignItems: 'center',
               textDecoration: 'none',
-              color: 'inherit',
-              fontWeight: 600, // Increase font weight for title
-              letterSpacing: '0.5px', // Add slight letter spacing
+              color: '#4fc3f7',
+              fontWeight: 700,
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              animation: `${subtlePulse} 3s infinite ease-in-out`,
+              '&:hover': {
+                textShadow: '0 0 12px rgba(79, 195, 247, 0.6)',
+              }
             }}
           >
-            Overwatch
+            OVERWATCH
           </Typography>
 
           <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
