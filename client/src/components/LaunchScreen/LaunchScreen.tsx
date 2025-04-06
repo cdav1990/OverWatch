@@ -41,6 +41,7 @@ const StyledPaper = styled(Paper)(({ theme }) => ({
     backdropFilter: 'blur(10px)',
     position: 'relative',
     overflow: 'hidden',
+    zIndex: 10,
     '&::before': {
         content: '""',
         position: 'absolute',
@@ -82,22 +83,35 @@ const SubTitle = styled(Typography)(({ theme }) => ({
     textAlign: 'center'
 }));
 
-const StyledButton = styled(Button)(({ theme }) => ({
-    minWidth: '200px',
+// Simplified button styling with better click handling
+const DevButton = styled(Button)(({ theme }) => ({
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'flex-start',
     padding: theme.spacing(2, 3),
     borderRadius: '6px',
-    textTransform: 'uppercase',
+    textTransform: 'none',
     fontWeight: 600,
-    fontSize: '1rem',
-    letterSpacing: '1px',
+    minHeight: '80px',
+    backgroundColor: 'rgba(255, 51, 102, 0.8)',
+    color: '#fff',
+    boxShadow: '0 5px 15px rgba(255, 51, 102, 0.3)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    animation: `${float} 3s infinite ease-in-out`,
+    animationDelay: '0.1s',
     transition: 'all 0.3s ease-in-out',
     position: 'relative',
     overflow: 'hidden',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    animation: `${float} 3s infinite ease-in-out`,
+    cursor: 'pointer',
+    zIndex: 20,
     '&:hover': {
+        backgroundColor: 'rgba(255, 51, 102, 0.9)',
         transform: 'translateY(-5px)',
-        boxShadow: '0 10px 20px rgba(0, 0, 0, 0.4), 0 0 15px rgba(79, 195, 247, 0.5)'
+        boxShadow: '0 10px 25px rgba(255, 51, 102, 0.4), 0 0 20px rgba(255, 51, 102, 0.4)',
+    },
+    '&:active': {
+        transform: 'translateY(0)',
+        boxShadow: '0 5px 15px rgba(255, 51, 102, 0.3)',
     },
     '&::after': {
         content: '""',
@@ -109,32 +123,83 @@ const StyledButton = styled(Button)(({ theme }) => ({
         background: 'linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0))',
         transform: 'rotate(30deg)',
         transition: 'all 0.5s ease-in-out',
+        pointerEvents: 'none', // Ensure clicks pass through this element
     },
     '&:hover::after': {
         transform: 'rotate(30deg) translate(10%, 10%)',
+    },
+    '&.Mui-disabled': {
+        backgroundColor: 'rgba(255, 51, 102, 0.3)',
+        color: 'rgba(255, 255, 255, 0.5)',
     }
 }));
 
-const DevButton = styled(StyledButton)(({ theme }) => ({
-    backgroundColor: 'rgba(255, 51, 102, 0.8)',
-    color: '#fff',
-    boxShadow: '0 5px 15px rgba(255, 51, 102, 0.3)',
-    '&:hover': {
-        backgroundColor: 'rgba(255, 51, 102, 0.9)',
-        boxShadow: '0 10px 25px rgba(255, 51, 102, 0.4), 0 0 20px rgba(255, 51, 102, 0.4)',
-    },
-    animationDelay: '0.1s'
-}));
-
-const OpsButton = styled(StyledButton)(({ theme }) => ({
+const OpsButton = styled(Button)(({ theme }) => ({
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    padding: theme.spacing(2, 3),
+    borderRadius: '6px',
+    textTransform: 'none',
+    fontWeight: 600,
+    minHeight: '80px',
     backgroundColor: 'rgba(79, 195, 247, 0.8)',
     color: '#fff',
     boxShadow: '0 5px 15px rgba(79, 195, 247, 0.3)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    animation: `${float} 3s infinite ease-in-out`,
+    animationDelay: '0.3s',
+    transition: 'all 0.3s ease-in-out',
+    position: 'relative',
+    overflow: 'hidden',
+    cursor: 'pointer',
+    zIndex: 20,
     '&:hover': {
         backgroundColor: 'rgba(79, 195, 247, 0.9)',
+        transform: 'translateY(-5px)',
         boxShadow: '0 10px 25px rgba(79, 195, 247, 0.4), 0 0 20px rgba(79, 195, 247, 0.4)',
     },
-    animationDelay: '0.3s'
+    '&:active': {
+        transform: 'translateY(0)',
+        boxShadow: '0 5px 15px rgba(79, 195, 247, 0.3)',
+    },
+    '&::after': {
+        content: '""',
+        position: 'absolute',
+        top: '-50%',
+        left: '-50%',
+        width: '200%',
+        height: '200%',
+        background: 'linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0))',
+        transform: 'rotate(30deg)',
+        transition: 'all 0.5s ease-in-out',
+        pointerEvents: 'none', // Ensure clicks pass through this element
+    },
+    '&:hover::after': {
+        transform: 'rotate(30deg) translate(10%, 10%)',
+    },
+    '&.Mui-disabled': {
+        backgroundColor: 'rgba(79, 195, 247, 0.3)',
+        color: 'rgba(255, 255, 255, 0.5)',
+    }
+}));
+
+// Icon container with animation
+const AnimatedIcon = styled(Box)(({ theme }) => ({
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing(1.5),
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: '50%',
+    padding: theme.spacing(1),
+    transition: 'all 0.3s ease',
+    '& svg': {
+        fontSize: '1.6rem',
+        transition: 'all 0.3s ease',
+    }
 }));
 
 // Custom spinning logo animation
@@ -176,24 +241,6 @@ const SpinningLogo = styled(Box)(({ theme }) => ({
     }
 }));
 
-// Icon container with animation
-const AnimatedIcon = styled(Box)(({ theme }) => ({
-    width: '40px',
-    height: '40px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: theme.spacing(1.5),
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '50%',
-    padding: theme.spacing(1),
-    transition: 'all 0.3s ease',
-    '& svg': {
-        fontSize: '1.6rem',
-        transition: 'all 0.3s ease',
-    }
-}));
-
 const LaunchScreen: React.FC = () => {
     const { setAppMode } = useAppContext();
 
@@ -213,13 +260,20 @@ const LaunchScreen: React.FC = () => {
         return () => clearTimeout(timer);
     }, []);
 
-    const handleSelectMode = (mode: 'dev' | 'ops') => {
-        setLoading(mode); // Indicate loading for the selected mode
-        // Simulate a short delay before setting the mode and transitioning
+    const handleDevClick = () => {
+        console.log('Developer mode clicked');
+        setLoading('dev');
         setTimeout(() => {
-            setAppMode(mode);
-            // setLoading(null); // Reset loading if staying on this screen wasn't intended
-        }, 500); // 0.5 second delay
+            setAppMode('dev');
+        }, 500);
+    };
+
+    const handleOpsClick = () => {
+        console.log('Operations mode clicked');
+        setLoading('ops');
+        setTimeout(() => {
+            setAppMode('ops');
+        }, 500);
     };
 
     return (
@@ -296,15 +350,13 @@ const LaunchScreen: React.FC = () => {
                         </SubTitle>
                         
                         <Stack direction="column" spacing={3} sx={{ width: '100%' }}>
+                            {/* Developer Button - Simplified */}
                             <DevButton 
-                                variant="contained" 
                                 disabled={loading !== null}
-                                onClick={() => handleSelectMode('dev')}
-                                sx={{
-                                    display: 'flex',
-                                    justifyContent: 'flex-start',
-                                    padding: '16px 24px',
-                                }}
+                                onClick={handleDevClick}
+                                disableRipple={false}
+                                disableTouchRipple={false}
+                                disableFocusRipple={false}
                             >
                                 {loading === 'dev' ? (
                                     <AnimatedIcon>
@@ -318,7 +370,8 @@ const LaunchScreen: React.FC = () => {
                                 <Box sx={{ 
                                     display: 'flex', 
                                     flexDirection: 'column', 
-                                    alignItems: 'flex-start'
+                                    alignItems: 'flex-start',
+                                    pointerEvents: 'none' // Don't intercept clicks
                                 }}>
                                     <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '1px' }}>
                                         DEVELOPER
@@ -328,15 +381,14 @@ const LaunchScreen: React.FC = () => {
                                     </Typography>
                                 </Box>
                             </DevButton>
+
+                            {/* Operations Button - Simplified */}
                             <OpsButton 
-                                variant="contained" 
                                 disabled={loading !== null}
-                                onClick={() => handleSelectMode('ops')}
-                                sx={{
-                                    display: 'flex',
-                                    justifyContent: 'flex-start',
-                                    padding: '16px 24px',
-                                }}
+                                onClick={handleOpsClick}
+                                disableRipple={false}
+                                disableTouchRipple={false}
+                                disableFocusRipple={false}
                             >
                                 {loading === 'ops' ? (
                                     <AnimatedIcon>
@@ -350,7 +402,8 @@ const LaunchScreen: React.FC = () => {
                                 <Box sx={{ 
                                     display: 'flex', 
                                     flexDirection: 'column', 
-                                    alignItems: 'flex-start'
+                                    alignItems: 'flex-start',
+                                    pointerEvents: 'none' // Don't intercept clicks
                                 }}>
                                     <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '1px' }}>
                                         OPERATIONS
@@ -369,7 +422,8 @@ const LaunchScreen: React.FC = () => {
                             right: '10px',
                             color: 'rgba(79, 195, 247, 0.2)',
                             fontSize: '10px',
-                            letterSpacing: '1px'
+                            letterSpacing: '1px',
+                            pointerEvents: 'none' // Don't intercept clicks
                         }}>
                             SYSTEM v1.0.2
                         </Box>
