@@ -289,15 +289,6 @@ const LaunchScreen: React.FC = () => {
                 backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(30, 40, 50, 0.4) 0%, rgba(12, 20, 25, 0.8) 100%)',
                 position: 'relative',
                 overflow: 'hidden',
-                '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    width: '100%',
-                    height: '100%',
-                    backgroundImage: 'linear-gradient(rgba(79, 195, 247, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(79, 195, 247, 0.03) 1px, transparent 1px)',
-                    backgroundSize: '20px 20px',
-                    zIndex: 1
-                }
             }}
         >
             {initialLoading ? (
@@ -308,7 +299,8 @@ const LaunchScreen: React.FC = () => {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        zIndex: 2,
+                        position: 'relative',
+                        zIndex: 5,
                     }}>
                         <LogoAppTitle variant="h1">
                             OVERWATCH
