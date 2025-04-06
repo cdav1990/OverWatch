@@ -1,14 +1,20 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Box, Container, Typography, Paper, ToggleButtonGroup, ToggleButton, TextField, Stack, Button, IconButton, LinearProgress, Switch, FormControlLabel } from '@mui/material';
+import { Box, Container, Typography, Paper, ToggleButtonGroup, ToggleButton, TextField, Stack, Button, IconButton, LinearProgress, Switch, FormControlLabel, Tabs, Tab, Divider, List, ListItem, ListItemAvatar, ListItemText, ListItemSecondaryAction, Avatar } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import { useMission } from '../../context/MissionContext';
-import Local3DViewer from '../../components/Local3DViewer/Local3DViewer';
+import Local3DViewer from '../../components/Local3DViewer';
 import { GCP, AltitudeReference, LocalCoord, PathSegment, Waypoint, LatLng } from '../../types/mission'; // Import more types
 import { generateUUID, latLngToLocal, localToLatLng } from '../../utils/coordinateUtils'; // Import converters
 import { generateRasterPathSegment, RasterParams } from '../../utils/pathUtils';
+import { feetToMeters } from '../../utils/sensorCalculations'; // Import converter for feet to meters
+import { MissionArea } from '../../context/MissionContext'; // Import MissionArea interface
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import UploadIcon from '@mui/icons-material/Upload'; // Import Upload icon
 import PanToolIcon from '@mui/icons-material/PanTool'; // Icon for Loiter/Hold
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
+import DeleteIcon from '@mui/icons-material/Delete';
+import MissionPlanningStep from './Steps/MissionPlanningStep'; // Import our renamed component
 
 // MAVLink Commands (Examples)
 const MAV_CMD_NAV_WAYPOINT = 16;
@@ -20,7 +26,7 @@ const COPTER_FLIGHT_MODE_LOITER = 5;
 // Inner component with access to context
 const MissionPageContent: React.FC = () => {
   const { state, dispatch } = useMission();
-  const { currentMission, isSimulating, isLive, simulationSpeed, simulationProgress } = state;
+  const { currentMission, isSimulating, isLive, simulationSpeed, simulationProgress, activeControlPane } = state;
 
   // --- ADD LOG --- Log currentMission on component mount/update
   useEffect(() => {
@@ -63,10 +69,15 @@ const MissionPageContent: React.FC = () => {
     // Only run if there's a mission and it has no GCPs yet
     if (currentMission && (!currentMission.gcps || currentMission.gcps.length === 0)) {
       console.log("Adding default GCPs to mission context...");
+      
+      // Position GCPs with GCP-A at the center (0,0,0)
+      const feetToMeters = 0.3048;
+      const sideLength = 15 * feetToMeters; // 15 feet in meters
+      
       const defaultSurveyPoints: Array<{ name: string; x: number; y: number; z: number }> = [
-        { name: 'Point A', x: 0, y: 0, z: 0 },
-        { name: 'Point B', x: 10, y: 0, z: 0 },
-        { name: 'Point C', x: 10, y: 10, z: 1 },
+        { name: 'GCP-A', x: 0, y: 0, z: 0 }, // Origin GCP - Center of the scene
+        { name: 'GCP-B', x: sideLength, y: 0, z: 0 }, // To the right (East) of GCP-A
+        { name: 'GCP-C', x: 0, y: sideLength, z: 0 }, // To the front (North) of GCP-A
       ];
 
       const defaultGcps: GCP[] = defaultSurveyPoints.map(point => ({
@@ -76,14 +87,22 @@ const MissionPageContent: React.FC = () => {
         lng: 0, // Dummy global coordinate
         altitude: 0, // Dummy global coordinate
         local: { x: point.x, y: point.y, z: point.z },
-        color: '#00ff00',
-        size: 1.5,
+        color: point.name === 'GCP-A' ? '#ff0000' : '#00ff00', // Make GCP-A red for visibility
+        size: point.name === 'GCP-A' ? 1.5 : 1, // Make GCP-A larger
       }));
 
       // Dispatch ADD_GCP for each default GCP
       defaultGcps.forEach(gcp => {
         dispatch({ type: 'ADD_GCP', payload: gcp });
       });
+      
+      // If we have a takeoff point, make sure it's at the center (GCP-A location)
+      if (!currentMission.takeoffPoint) {
+        dispatch({ 
+          type: 'SET_TAKEOFF_POINT', 
+          payload: { x: 0, y: 0, z: 0 } 
+        });
+      }
     }
   }, [currentMission, dispatch]);
 
@@ -285,244 +304,133 @@ const MissionPageContent: React.FC = () => {
     }
   };
 
+  // Handle tab change
+  const handleTabChange = (event: React.SyntheticEvent, newValue: 'pre-checks' | 'build-scene' | 'mission-planning') => {
+    dispatch({ type: 'SET_ACTIVE_CONTROL_PANE', payload: newValue });
+  };
+
   return (
-    <Container maxWidth={false} disableGutters sx={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
-      <Paper elevation={1} sx={{ p: 1, mb: 1 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h6">Mission Planning</Typography>
-            <Typography variant="body2">
-              Plan missions using imported 3D models or LiDAR data, create waypoints, and simulate flights.
-            </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs 
+          value={activeControlPane} 
+          onChange={handleTabChange}
+          aria-label="mission workflow tabs"
+        >
+          <StyledTab label="Pre-Checks" value="pre-checks" />
+          <StyledTab label="Build Scene" value="build-scene" />
+          <StyledTab label="Mission Planning" value="mission-planning" />
+        </Tabs>
+      </Box>
+      
+      <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
+        {/* Left Panel - Control pane */}
+        <Box sx={{ 
+          width: '25%', 
+          borderRight: 1, 
+          borderColor: 'divider', 
+          height: '100%', 
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+            {activeControlPane === 'pre-checks' && <MissionPreChecksStep />}
+            {activeControlPane === 'build-scene' && <BuildSceneStep />}
+            {activeControlPane === 'mission-planning' && <MissionPlanningStep />}
           </Box>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}> { /* Group mode toggle and controls */}
-            <ToggleButtonGroup
-              value={currentMode} // Use derived mode state
-              exclusive
-              onChange={handleModeChange}
-              aria-label="mission mode"
-              size="small"
-            >
-              <ToggleButton value="simulation" aria-label="simulation mode">
-                Simulation
-              </ToggleButton>
-              <ToggleButton value="live" aria-label="live mode">
-                Live
-              </ToggleButton>
-            </ToggleButtonGroup>
-
-            {/* Play/Pause Controls - Visible only in Simulation mode */}
-            {currentMode === 'simulation' && (
-              <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid rgba(0, 0, 0, 0.12)', borderRadius: 1 }}>
-                <IconButton 
-                  onClick={handlePlaySimulation} 
-                  disabled={isSimulating} // Disable Play if already simulating
-                  size="small"
-                  aria-label="play simulation"
-                >
-                  <PlayArrowIcon />
-                </IconButton>
-                <IconButton 
-                  onClick={handlePauseSimulation} 
-                  disabled={!isSimulating} // Disable Pause if not simulating
-                  size="small"
-                  aria-label="pause simulation"
-                >
-                  <PauseIcon />
-                </IconButton>
-              </Box>
-            )}
-
-            {/* Upload Button - Visible only in Live mode */}
-            {currentMode === 'live' && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<UploadIcon />}
-                onClick={handleUploadMission}
-                disabled={!currentMission || !currentMission.pathSegments.length || !currentMission.localOrigin}
-                sx={{ ml: 1 }} // Add some margin
-              >
-                Upload Plan (Mock)
-              </Button>
-            )}
-
-            {/* Loiter Button - Visible only in Live mode */}
-            {currentMode === 'live' && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<PanToolIcon />} // Use appropriate icon
-                onClick={handleLoiterCommand}
-                disabled={!isLive} // Should always be enabled in live mode? Maybe disable if not connected?
-                sx={{ ml: 1, color: 'orange', borderColor: 'orange' }} 
-              >
-                Loiter (Mock)
-              </Button>
-            )}
+          <Divider />
+          
+          {/* Hardware visualization settings panel */}
+          <Box sx={{ height: '40%', overflow: 'auto' }}>
+            <HardwareVisualizationSettings />
           </Box>
         </Box>
-        {/* Simulation Progress Bar/Text - Visible only when simulating */}
-        {isSimulating && simulationProgress.currentSegmentId && simulationProgress.totalWaypointsInSegment > 0 && (
-          <Box sx={{ width: '100%', mt: 1, px: 1 }}>
-            <Typography variant="caption" display="block" gutterBottom>
-              Simulating: Heading towards Waypoint {simulationProgress.currentWaypointIndex} of {simulationProgress.totalWaypointsInSegment}
-            </Typography>
-            <LinearProgress 
-              variant="determinate" 
-              value={((simulationProgress.currentWaypointIndex -1) / simulationProgress.totalWaypointsInSegment) * 100} 
-            />
-          </Box>
-        )}
-      </Paper>
-
-      <Box sx={{ 
-        flex: 1, 
-        minHeight: 0, 
-        display: 'flex', 
-        flexDirection: 'row',
-        overflow: 'hidden'
-      }}>
-        {/* This is the left panel */}
-        <Paper elevation={2} sx={{ width: '600px', p: 2, mr: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-          <Typography variant="h6" gutterBottom>Controls</Typography>
-          
-          <Box sx={{ border: '1px dashed grey', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
-            <Typography variant="caption">Compass Placeholder (N, E, S, W)</Typography>
-          </Box>
-
-          <Typography variant="subtitle1" gutterBottom>Raster Pattern</Typography>
-          <Stack spacing={2}>
-            <TextField 
-              label="Pattern Length (Distance)" 
-              variant="outlined" 
-              size="small" 
-              fullWidth
-              value={horizontalDistance}
-              onChange={(e) => setHorizontalDistance(e.target.value)}
-              helperText={orientation === 'horizontal' ? "Length of each East/West row" : "Length of each North/South column"}
-            />
-            <TextField 
-              label="Pattern Spacing" 
-              variant="outlined" 
-              size="small" 
-              fullWidth
-              value={rowSpacing}
-              onChange={(e) => setRowSpacing(e.target.value)}
-              helperText={orientation === 'horizontal' ? "Distance between North/South rows" : "Distance between East/West columns"}
-            />
-            <TextField 
-              label="Number of Passes" 
-              variant="outlined" 
-              size="small" 
-              fullWidth
-              value={numRows}
-              onChange={(e) => setNumRows(e.target.value)}
-              helperText={orientation === 'horizontal' ? "Number of rows" : "Number of columns"}
-            />
-            <TextField 
-              label="Start Altitude (AGL)" 
-              variant="outlined" 
-              size="small" 
-              type="number" // Use number type
-              fullWidth
-              value={startAltitude}
-              onChange={(e) => setStartAltitude(e.target.value)}
-              InputProps={{ inputProps: { min: 0 } }} // Prevent negative numbers via HTML5 validation
-            />
-            {/* Placeholder for selecting start position (e.g., click on map) */}
-            <Typography variant="caption">
-              Start Position: (X: {rasterStartPos.x}, Y: {rasterStartPos.y}, Z: {rasterStartPos.z})
-            </Typography>
-            
-            {/* Orientation Toggle */}
-            <Box>
-              <Typography variant="caption" display="block">Orientation:</Typography>
-              <ToggleButtonGroup
-                value={orientation}
-                exclusive
-                onChange={handleOrientationChange}
-                aria-label="pattern orientation"
-                size="small"
-                fullWidth
-              >
-                <ToggleButton value="horizontal" aria-label="horizontal pattern">
-                  Horizontal (E/W)
-                </ToggleButton>
-                <ToggleButton value="vertical" aria-label="vertical pattern">
-                  Vertical (N/S)
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-
-            {/* Snake Pattern Toggle */}
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={snakePattern}
-                  onChange={(e) => setSnakePattern(e.target.checked)}
-                  name="snakePattern"
-                  size="small"
-                />
-              }
-              label="Snake Pattern (Zigzag)"
-              labelPlacement="start"
-              sx={{ justifyContent: 'space-between', ml: 0, mr: 0.5 }}
-            />
-            
-            <Button 
-              variant="contained" 
-              onClick={handleGeneratePath}
-              disabled={!currentMission} // Disable if no mission is loaded
-            >
-              Generate Path Preview
-            </Button>
-          </Stack>
-        </Paper>
-
-        <Box sx={{ 
-          flex: 1, 
-          minHeight: 0, 
-          position: 'relative',
-          display: 'flex', 
-          flexDirection: 'column' 
-        }}>
-          {/* Compass Overlay */}
-          <Box 
-            sx={{ 
-              position: 'absolute',
-              top: 16,
-              left: 16,
-              width: 60,
-              height: 60,
-              backgroundColor: 'rgba(255, 255, 255, 0.7)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid grey',
-              zIndex: 10, // Ensure it's above the canvas
-              fontSize: '0.7rem',
-              fontWeight: 'bold'
-            }}
-          >
-            {/* Simple text-based compass */}
-            <Box sx={{ position: 'absolute', top: 2 }}>N</Box>
-            <Box sx={{ position: 'absolute', bottom: 2 }}>S</Box>
-            <Box sx={{ position: 'absolute', left: 5 }}>W</Box>
-            <Box sx={{ position: 'absolute', right: 5 }}>E</Box>
-          </Box>
-
-          <Local3DViewer 
-            height="100%" 
-            // Pass live telemetry data down
-            liveDronePosition={liveDronePosition}
-            liveDroneRotation={liveDroneRotation}
-          />
+        
+        {/* Right Panel - 3D Viewer */}
+        <Box sx={{ width: '75%', height: '100%' }}>
+          <Local3DViewer height="100%" />
         </Box>
       </Box>
-    </Container>
+    </Box>
+  );
+};
+
+// Add a new component for displaying selected face area information
+const SelectedAreaInformation: React.FC = () => {
+  const { state } = useMission();
+  const { selectedFace } = state;
+
+  if (!selectedFace) return null;
+
+  // Convert area to square feet (assuming area is in square meters)
+  const areaInSquareFeet = selectedFace.area * 10.764;
+
+  return (
+    <Box sx={{ p: 2, mt: 2, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1 }}>
+      <Typography variant="h6" sx={{ mb: 1 }}>Selected Mission Area</Typography>
+      <Typography variant="body2" sx={{ mb: 1 }}>
+        <strong>Area ID:</strong> {selectedFace.faceId}
+      </Typography>
+      <Typography variant="body2" sx={{ mb: 1 }}>
+        <strong>Surface Area:</strong> {areaInSquareFeet.toFixed(2)} sq ft
+      </Typography>
+      <Typography variant="body2">
+        <strong>Object:</strong> {selectedFace.objectId}
+      </Typography>
+    </Box>
+  );
+};
+
+// Add the component to the BuildSceneStep (assuming this component exists)
+// If BuildSceneStep doesn't exist, you'll need to create it
+
+const BuildSceneStep: React.FC = () => {
+  return (
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6" gutterBottom>Build Your Scene</Typography>
+      <Typography variant="body2" sx={{ mb: 2 }}>
+        Add objects to your scene by using the tools below. Click on faces to select areas for mission planning.
+      </Typography>
+      
+      {/* Add scene building controls here */}
+      
+      {/* Add the selected area information component */}
+      <SelectedAreaInformation />
+    </Box>
+  );
+};
+
+// Define StyledTab component
+const StyledTab = styled(Tab)(({ theme }) => ({
+  textTransform: 'none',
+  fontWeight: 500,
+  fontSize: '0.9rem',
+  minWidth: 120,
+}));
+
+// Define missing step components
+const MissionPreChecksStep: React.FC = () => {
+  return (
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6" gutterBottom>Mission Pre-Checks</Typography>
+      <Typography variant="body2">
+        Configure mission settings and verify hardware before takeoff.
+      </Typography>
+    </Box>
+  );
+};
+
+// Define HardwareVisualizationSettings component (simplified version)
+const HardwareVisualizationSettings: React.FC = () => {
+  return (
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6" gutterBottom>Hardware Visualization</Typography>
+      <Typography variant="body2">
+        Configure hardware visualization settings.
+      </Typography>
+    </Box>
   );
 };
 

@@ -6,25 +6,16 @@ import {
     Slider,
     Switch,
     FormControlLabel,
-    Select,
-    MenuItem,
-    TextField,
     Paper,
-    Divider,
-    SelectChangeEvent
+    Divider
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { LocalCoord } from '../../types/mission'; // Assuming LocalCoord is used for position
 import { styled } from '@mui/material/styles';
-import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations'; // <-- Import conversion functions
+import { metersToFeet } from '../../utils/sensorCalculations'; // Keep only conversion needed for display
+import { useMission } from '../../context/MissionContext'; // Keep context
 
-// Placeholder types - replace with actual types if available
-type CameraSettings = {
-    fStop: number | string; // Can be number or string like "8"
-    focusDistance: number;
-};
-
-// Props definition
+// Props definition - removed camera settings props
 interface DronePositionControlPanelProps {
     isOpen: boolean;
     onClose: () => void;
@@ -32,9 +23,6 @@ interface DronePositionControlPanelProps {
     onPositionChange: (newPosition: LocalCoord) => void;
     initialCameraFollow: boolean;
     onCameraFollowChange: (follows: boolean) => void;
-    initialCameraSettings: CameraSettings;
-    onCameraSettingsChange: (settings: CameraSettings) => void;
-    // Add any other necessary props, e.g., min/max ranges for sliders
 }
 
 // Styled components for consistent spacing and appearance
@@ -142,23 +130,6 @@ const SectionTitle = styled(Typography)(({ theme }) => ({
     letterSpacing: '0.5px',
 }));
 
-const StyledSelect = styled(Select<string | number>)(({ theme }) => ({
-    fontSize: '0.85rem',
-    color: theme.palette.common.white,
-    '& .MuiOutlinedInput-notchedOutline': {
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-    },
-    '&:hover .MuiOutlinedInput-notchedOutline': {
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-    },
-    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-        borderColor: '#4fc3f7',
-    },
-    '& .MuiSelect-icon': {
-        color: 'rgba(255, 255, 255, 0.5)',
-    },
-}));
-
 const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     isOpen,
     onClose,
@@ -166,12 +137,10 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     onPositionChange,
     initialCameraFollow,
     onCameraFollowChange,
-    initialCameraSettings,
-    onCameraSettingsChange,
 }) => {
+    // Keep only the state we need
     const [position, setPosition] = useState<LocalCoord>(initialPosition);
     const [cameraFollows, setCameraFollows] = useState(initialCameraFollow);
-    const [cameraSettings, setCameraSettings] = useState<CameraSettings>(initialCameraSettings);
 
     // Update internal state if initial props change
     useEffect(() => {
@@ -181,14 +150,6 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     useEffect(() => {
         setCameraFollows(initialCameraFollow);
     }, [initialCameraFollow]);
-
-    useEffect(() => {
-        // Initialize camera settings, converting focus distance from meters (assumed internal) to feet for display
-        setCameraSettings({
-            ...initialCameraSettings,
-            focusDistance: metersToFeet(initialCameraSettings.focusDistance)
-        });
-    }, [initialCameraSettings]);
 
     // Handlers to update internal state and call parent callbacks
     const handleSliderChange = (axis: keyof LocalCoord, value: number | number[]) => {
@@ -202,29 +163,6 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     const handleSwitchChange = (event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
         setCameraFollows(checked);
         onCameraFollowChange(checked);
-    };
-
-    const handleCameraSettingChange = (
-        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<number | string>,
-        field: keyof CameraSettings
-    ) => {
-        const rawValue = event.target.value;
-        let updatedSettings: CameraSettings;
-
-        if (field === 'focusDistance') {
-            const focusFeet = Number(rawValue);
-            // Update local state with feet value for display consistency
-            updatedSettings = { ...cameraSettings, focusDistance: focusFeet };
-            setCameraSettings(updatedSettings);
-            // Convert back to meters before notifying parent
-            const focusMeters = feetToMeters(focusFeet);
-            onCameraSettingsChange({ ...cameraSettings, focusDistance: focusMeters });
-        } else { // Handle fStop
-            updatedSettings = { ...cameraSettings, fStop: rawValue };
-            setCameraSettings(updatedSettings);
-            // Notify parent directly (fStop doesn't need unit conversion)
-            onCameraSettingsChange(updatedSettings);
-        }
     };
 
     if (!isOpen) {
@@ -304,7 +242,7 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
 
             <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
 
-            {/* Toggle Controls */}
+            {/* Camera Follow Toggle */}
             <SectionTitle variant="subtitle2">Camera Settings</SectionTitle>
             <FormControlLabel
                 control={
@@ -334,100 +272,6 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
             >
                 Centers view on drone but allows manual camera control
             </Typography>
-
-            <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
-
-            {/* Camera Settings */}
-            <SectionTitle variant="subtitle2">Camera Parameters</SectionTitle>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-                <Box sx={{ flex: 1 }}>
-                    <Typography 
-                        variant="caption" 
-                        display="block" 
-                        gutterBottom 
-                        sx={{ 
-                            fontSize: '0.75rem', 
-                            color: '#ddd',
-                            mb: 0.5
-                        }}
-                    >
-                        F-Stop
-                    </Typography>
-                    <StyledSelect
-                        value={cameraSettings.fStop}
-                        onChange={(e) => handleCameraSettingChange(e, 'fStop')}
-                        size="small"
-                        fullWidth
-                        MenuProps={{ 
-                            PaperProps: { 
-                                sx: { 
-                                    backgroundColor: 'rgba(21, 21, 21, 0.97)', 
-                                    color: 'white',
-                                    '& .MuiMenuItem-root': {
-                                        fontSize: '0.85rem',
-                                    },
-                                    '& .MuiMenuItem-root:hover': {
-                                        backgroundColor: 'rgba(60, 60, 60, 0.9)',
-                                    }
-                                } 
-                            } 
-                        }}
-                    >
-                        {/* Placeholder values - should be dynamic based on available lens */}
-                        <MenuItem value={1.4}>f/1.4</MenuItem>
-                        <MenuItem value={2.0}>f/2.0</MenuItem>
-                        <MenuItem value={2.8}>f/2.8</MenuItem>
-                        <MenuItem value={4.0}>f/4.0</MenuItem>
-                        <MenuItem value={5.6}>f/5.6</MenuItem>
-                        <MenuItem value={8}>f/8</MenuItem>
-                        <MenuItem value={11}>f/11</MenuItem>
-                        <MenuItem value={16}>f/16</MenuItem>
-                        <MenuItem value={22}>f/22</MenuItem>
-                    </StyledSelect>
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                    <Typography 
-                        variant="caption" 
-                        display="block" 
-                        gutterBottom 
-                        sx={{ 
-                            fontSize: '0.75rem', 
-                            color: '#ddd',
-                            mb: 0.5
-                        }}
-                    >
-                        Focus Distance (ft)
-                    </Typography>
-                    <TextField
-                        value={cameraSettings.focusDistance.toFixed(1)} // Display feet from local state
-                        onChange={(e) => handleCameraSettingChange(e, 'focusDistance')}
-                        type="number"
-                        size="small"
-                        fullWidth
-                        InputProps={{
-                            inputProps: { min: 0.3, step: 0.1 }, // Example constraints in FEET (0.3ft ~ 0.1m)
-                            sx: { 
-                                color: 'white',
-                                fontSize: '0.85rem',
-                            }
-                        }}
-                        sx={{ 
-                            '& .MuiOutlinedInput-root': {
-                                backgroundColor: 'rgba(40, 40, 40, 0.9)',
-                                '& fieldset': { 
-                                    borderColor: 'rgba(255, 255, 255, 0.2)' 
-                                },
-                                '&:hover fieldset': { 
-                                    borderColor: 'rgba(255, 255, 255, 0.3)' 
-                                },
-                                '&.Mui-focused fieldset': { 
-                                    borderColor: '#4fc3f7' 
-                                }, 
-                            },
-                        }}
-                    />
-                </Box>
-            </Box>
         </PanelContainer>
     );
 };

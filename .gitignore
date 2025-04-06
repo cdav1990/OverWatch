@@ -48,4 +48,8 @@ logs/
 
 # System Files
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Ignore old RasterPatternStep that has been renamed to MissionPlanningStep
+client/src/pages/MissionPage/Steps/RasterPatternStep.tsx
+client/src/pages/MissionPage/RasterPatternStep.tsx 

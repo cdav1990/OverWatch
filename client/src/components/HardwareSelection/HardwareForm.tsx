@@ -17,6 +17,13 @@ interface HardwareFormProps {
     onSaveSuccess?: () => void; // Add prop to call after saving
 }
 
+// Default hardware IDs - consistent with DroneSceneViewerWrapper
+const DEFAULT_CAMERA_ID = 'phase-one-ixm-100';
+const DEFAULT_LENS_ID = 'phaseone-rsm-80mm';
+const DEFAULT_SENSOR_TYPE = 'Medium Format';
+const DEFAULT_DRONE_ID = 'freefly-alta-x';
+const DEFAULT_LIDAR_ID = 'ouster';
+
 // DOF Information Box Component
 interface DofInfoBoxProps {
     label: string;
@@ -58,29 +65,55 @@ const HardwareForm: React.FC<HardwareFormProps> = ({ onSaveSuccess }) => {
     const { state: missionState, dispatch } = useMission();
     const hardwareFromContext = missionState.hardware; // Get context hardware state
 
-    // --- Default IDs ---
-    const defaultDroneId = 'freefly-alta-x';
-    const defaultLidarId = 'ouster';
-    const defaultCameraId = 'phase-one-ixm-100';
-    const defaultLensId = 'phaseone-rsm-80mm';
-    const defaultSensorType = 'Medium Format';
-
     // --- Local state for selections - Initialize with defaults or context values ---
     const [selectedDroneId, setSelectedDroneId] = useState<string>(
-        () => hardwareFromContext?.drone || defaultDroneId
+        () => hardwareFromContext?.drone || DEFAULT_DRONE_ID
     );
     const [selectedLidarId, setSelectedLidarId] = useState<string>(
-        () => hardwareFromContext?.lidar || defaultLidarId
+        () => hardwareFromContext?.lidar || DEFAULT_LIDAR_ID
     );
     const [selectedSensorType, setSelectedSensorType] = useState<SensorType | 'All'> (
-        () => hardwareFromContext?.sensorType || defaultSensorType
+        () => hardwareFromContext?.sensorType || DEFAULT_SENSOR_TYPE
     );
     const [selectedCameraId, setSelectedCameraId] = useState<string>(
-        () => hardwareFromContext?.camera || defaultCameraId
+        () => hardwareFromContext?.camera || DEFAULT_CAMERA_ID
     );
     const [selectedLensId, setSelectedLensId] = useState<string>(
-        () => hardwareFromContext?.lens || defaultLensId
+        () => hardwareFromContext?.lens || DEFAULT_LENS_ID
     );
+
+    // Track if initialization has been done
+    const [initialized, setInitialized] = useState(false);
+
+    // Initialize hardware defaults to context if not already set
+    useEffect(() => {
+        if (initialized || !dispatch) return;
+
+        // Only initialize default hardware to context if they don't already exist
+        if (!hardwareFromContext) {
+            // Get objects for the default selections
+            const defaultCamera = getCameraById(DEFAULT_CAMERA_ID);
+            const defaultLens = getLensById(DEFAULT_LENS_ID);
+            
+            if (defaultCamera && defaultLens) {
+                // Set camera and lens details in context
+                dispatch({
+                    type: 'SET_HARDWARE',
+                    payload: {
+                        camera: DEFAULT_CAMERA_ID,
+                        cameraDetails: defaultCamera,
+                        lens: DEFAULT_LENS_ID,
+                        lensDetails: defaultLens,
+                        sensorType: DEFAULT_SENSOR_TYPE,
+                        drone: DEFAULT_DRONE_ID,
+                        lidar: DEFAULT_LIDAR_ID
+                    }
+                });
+            }
+        }
+
+        setInitialized(true);
+    }, [hardwareFromContext, dispatch, initialized]);
 
     // --- Derived State ---
     // Available Cameras based on Sensor Type
@@ -169,8 +202,8 @@ const HardwareForm: React.FC<HardwareFormProps> = ({ onSaveSuccess }) => {
                 const lenses = getCompatibleLenses(selectedCameraId);
                 if (lenses.length > 0) {
                     // If the default lens is compatible, keep it, otherwise select the first compatible
-                    const defaultLensIsCompatible = lenses.some(l => l.id === defaultLensId);
-                    setSelectedLensId(defaultLensIsCompatible ? defaultLensId : lenses[0].id);
+                    const defaultLensIsCompatible = lenses.some(l => l.id === DEFAULT_LENS_ID);
+                    setSelectedLensId(defaultLensIsCompatible ? DEFAULT_LENS_ID : lenses[0].id);
                 }
              }
         }
@@ -257,20 +290,35 @@ const HardwareForm: React.FC<HardwareFormProps> = ({ onSaveSuccess }) => {
             return;
         }
 
-        // For drone, lidar, and sensor type - update these only on save
+        // Dispatch SET_HARDWARE with the complete current selection
         dispatch({
             type: 'SET_HARDWARE',
             payload: {
                 drone: selectedDroneId,
                 lidar: selectedLidarId,
                 sensorType: selectedSensorType,
+                camera: selectedCameraId,
+                lens: selectedLensId,
+                // Include details objects as well
                 droneDetails: currentSelectedDrone,
-                // Don't overwrite camera/lens values that were already updated
+                cameraDetails: currentSelectedCamera,
+                lensDetails: currentSelectedLens,
+                // Ensure other fields from HardwareState are preserved or defaulted
+                // The reducer already handles merging and defaulting fStop, focusDistance etc.
+                // so we only need to pass the core IDs and details here.
             }
         });
         
         console.log("Hardware selection saved to context:", {
-             droneId: selectedDroneId, lidarId: selectedLidarId, cameraId: selectedCameraId, lensId: selectedLensId, sensorType: selectedSensorType
+             droneId: selectedDroneId, 
+             lidarId: selectedLidarId, 
+             cameraId: selectedCameraId, 
+             lensId: selectedLensId, 
+             sensorType: selectedSensorType,
+             // Include details in log for clarity
+             droneDetails: currentSelectedDrone,
+             cameraDetails: currentSelectedCamera,
+             lensDetails: currentSelectedLens
         });
         
         if (onSaveSuccess) {

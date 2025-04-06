@@ -35,6 +35,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useMission } from '../../../context/MissionContext';
 import { generateUUID } from '../../../utils/coordinateUtils';
 import { SceneObject } from '../../../context/MissionContext';
+import { metersToFeet, feetToMeters } from '../../../utils/sensorCalculations';
 
 // Styled components for industrial UI
 const SectionTitle = styled(Typography)(({ theme }) => ({
@@ -162,9 +163,9 @@ const BuildSceneStep: React.FC = () => {
     const { state, dispatch } = useMission();
     const { sceneObjects } = state;
 
-    const [width, setWidth] = useState<number>(10);
-    const [length, setLength] = useState<number>(10);
-    const [height, setHeight] = useState<number>(10);
+    const [width, setWidth] = useState<number>(33);
+    const [length, setLength] = useState<number>(33);
+    const [height, setHeight] = useState<number>(33);
     const [color, setColor] = useState<string>('#888888');
     const objectType = 'box';
     const [objectClass, setObjectClass] = useState<'neutral' | 'obstacle' | 'asset'>('neutral');
@@ -204,13 +205,18 @@ const BuildSceneStep: React.FC = () => {
         setIsLoading(true);
         setErrorMessage('');
         
-        const widthMeters = width;
-        const lengthMeters = length;
-        const heightMeters = height;
+        const widthFeet = width;
+        const lengthFeet = length;
+        const heightFeet = height;
+        
+        const widthMeters = feetToMeters(widthFeet);
+        const lengthMeters = feetToMeters(lengthFeet);
+        const heightMeters = feetToMeters(heightFeet);
+        
         const selectedColor = color;
         const selectedClass = objectClass;
 
-        if (widthMeters <= 0 || lengthMeters <= 0 || heightMeters <= 0) {
+        if (widthFeet <= 0 || lengthFeet <= 0 || heightFeet <= 0) {
             setErrorMessage("Dimensions must be positive numbers.");
             setIsLoading(false);
             return;
@@ -457,7 +463,7 @@ const BuildSceneStep: React.FC = () => {
                                         <Box display="flex" sx={{ gap: 2 }}>
                                             <Box sx={{ flexGrow: 1 }}>
                                                 <StyledTextField
-                                                    label="Width (m)"
+                                                    label="Width (ft)"
                                                     type="number"
                                                     value={width || ''}
                                                     onChange={(e) => handleDimensionChange(setWidth, e.target.value)}
@@ -471,7 +477,7 @@ const BuildSceneStep: React.FC = () => {
                                             </Box>
                                             <Box sx={{ flexGrow: 1 }}>
                                                 <StyledTextField
-                                                    label="Length (m)"
+                                                    label="Length (ft)"
                                                     type="number"
                                                     value={length || ''}
                                                     onChange={(e) => handleDimensionChange(setLength, e.target.value)}
@@ -485,7 +491,7 @@ const BuildSceneStep: React.FC = () => {
                                             </Box>
                                             <Box sx={{ flexGrow: 1 }}>
                                                 <StyledTextField
-                                                    label="Height (m)"
+                                                    label="Height (ft)"
                                                     type="number"
                                                     value={height || ''}
                                                     onChange={(e) => handleDimensionChange(setHeight, e.target.value)}
@@ -557,9 +563,9 @@ const BuildSceneStep: React.FC = () => {
                                                             }
                                                         }}
                                                     >
-                                                        <MenuItem value="neutral">Neutral</MenuItem>
-                                                        <MenuItem value="obstacle">Obstacle</MenuItem>
-                                                        <MenuItem value="asset">Asset</MenuItem>
+                                                        <MenuItem value="neutral">Neutral (Grey)</MenuItem>
+                                                        <MenuItem value="obstacle">Obstacle (Red)</MenuItem>
+                                                        <MenuItem value="asset">Asset (Green)</MenuItem>
                                                     </Select>
                                                 </StyledFormControl>
                                             </Box>
@@ -587,50 +593,56 @@ const BuildSceneStep: React.FC = () => {
                                 <SectionSubtitle variant="subtitle1">Object List</SectionSubtitle>
                                 {buildSceneObjects.length > 0 ? (
                                     <List sx={{ p: 0 }}>
-                                        {buildSceneObjects.map((obj) => (
-                                            <StyledListItem key={obj.id}>
-                                                <ListItemAvatar>
-                                                    <Avatar 
-                                                        sx={{ 
-                                                            bgcolor: obj.color || '#888888', 
-                                                            width: 30, 
-                                                            height: 30 
-                                                        }}
-                                                    >
-                                                        <ViewInArIcon fontSize="small" />
-                                                    </Avatar>
-                                                </ListItemAvatar>
-                                                <ListItemText
-                                                    primary={
-                                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-                                                            {obj.type.charAt(0).toUpperCase() + obj.type.slice(1)}
-                                                        </Typography>
-                                                    }
-                                                    secondary={
-                                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', fontFamily: '"Roboto Mono", monospace' }}>
-                                                            {`${obj.width?.toFixed(1)}m × ${obj.length?.toFixed(1)}m × ${obj.height?.toFixed(1)}m`}
-                                                        </Typography>
-                                                    }
-                                                />
-                                                <ListItemSecondaryAction>
-                                                    <IconButton 
-                                                        edge="end" 
-                                                        aria-label="delete"
-                                                        onClick={() => handleRemoveObject(obj.id)}
-                                                        size="small"
-                                                        sx={{ 
-                                                            color: 'rgba(255, 51, 102, 0.7)',
-                                                            '&:hover': {
-                                                                backgroundColor: 'rgba(255, 51, 102, 0.15)',
-                                                                color: '#ff3366'
-                                                            }
-                                                        }}
-                                                    >
-                                                        <DeleteIcon fontSize="small" />
-                                                    </IconButton>
-                                                </ListItemSecondaryAction>
-                                            </StyledListItem>
-                                        ))}
+                                        {buildSceneObjects.map((obj) => {
+                                            const widthFeet = obj.width ? metersToFeet(obj.width) : 0;
+                                            const lengthFeet = obj.length ? metersToFeet(obj.length) : 0;
+                                            const heightFeet = obj.height ? metersToFeet(obj.height) : 0;
+                                            
+                                            return (
+                                                <StyledListItem key={obj.id}>
+                                                    <ListItemAvatar>
+                                                        <Avatar 
+                                                            sx={{ 
+                                                                bgcolor: obj.color || '#888888', 
+                                                                width: 30, 
+                                                                height: 30 
+                                                            }}
+                                                        >
+                                                            <ViewInArIcon fontSize="small" />
+                                                        </Avatar>
+                                                    </ListItemAvatar>
+                                                    <ListItemText
+                                                        primary={
+                                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+                                                                {obj.type.charAt(0).toUpperCase() + obj.type.slice(1)}
+                                                            </Typography>
+                                                        }
+                                                        secondary={
+                                                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', fontFamily: '"Roboto Mono", monospace' }}>
+                                                                {`${widthFeet.toFixed(1)}ft × ${lengthFeet.toFixed(1)}ft × ${heightFeet.toFixed(1)}ft`}
+                                                            </Typography>
+                                                        }
+                                                    />
+                                                    <ListItemSecondaryAction>
+                                                        <IconButton 
+                                                            edge="end" 
+                                                            aria-label="delete"
+                                                            onClick={() => handleRemoveObject(obj.id)}
+                                                            size="small"
+                                                            sx={{ 
+                                                                color: 'rgba(255, 51, 102, 0.7)',
+                                                                '&:hover': {
+                                                                    backgroundColor: 'rgba(255, 51, 102, 0.15)',
+                                                                    color: '#ff3366'
+                                                                }
+                                                            }}
+                                                        >
+                                                            <DeleteIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </ListItemSecondaryAction>
+                                                </StyledListItem>
+                                            );
+                                        })}
                                     </List>
                                 ) : (
                                     <Typography variant="body2" align="center" sx={{ color: 'rgba(255, 255, 255, 0.6)', p: 2 }}>

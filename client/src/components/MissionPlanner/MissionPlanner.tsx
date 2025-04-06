@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Paper, Typography, Tabs, Tab, Button } from '@mui/material';
 import { useMission } from '../../context/MissionContext';
 import CesiumGlobe from '../CesiumGlobe/CesiumGlobe';
-import Local3DViewer from '../Local3DViewer/Local3DViewer';
+import Local3DViewer from '../Local3DViewer';
 import { LatLng } from '../../types/mission';
 
 const MissionPlanner: React.FC = () => {

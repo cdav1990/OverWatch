@@ -8,6 +8,7 @@ Overwatch is a comprehensive drone mission planning platform built with React an
 - **Create 3D Objects**: Add boxes and other 3D objects with customizable dimensions, colors, and positions
 - **Import 3D Models**: Support for GLB, GLTF, and other 3D model formats
 - **Interactive Terrain**: Real-time interactive environment that displays GCPs and mission waypoints
+- **Interactive Objects**: Edit object properties (position, color, etc.) via double-click. Resize box objects by holding Shift + Double-click and dragging the handles. Drag GCPs by holding Shift + Double-click.
 - **Polygon Drawing**: Draw and create polygon areas in the 3D scene
 - **Scene Export**: Export your scene as GLB, GLTF, or GeoJSON
 
@@ -39,7 +40,7 @@ Overwatch is a comprehensive drone mission planning platform built with React an
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/cdav1990/OverWatch.git
+git clone https://github.com/GeckoRobotics/OverWatch.git
 cd Overwatch
 ```
 
@@ -80,6 +81,11 @@ npm run dev
 2. Use the coordinate inputs to precisely position the drone
 3. Enable "Camera Follow" to keep the view centered on the drone
 4. Adjust camera settings (focal length, aperture) to see how they affect the field of view
+
+### Interacting with the 3D Scene
+- **Edit Object Properties**: Double-click a scene object (e.g., a Box) or a GCP marker in the 3D view to open its edit modal.
+- **Resize Box Objects**: Hold **Shift** while double-clicking a box object to activate resize handles. Drag the handles to resize, then press **Escape** to confirm the new dimensions.
+- **Move GCPs**: Hold **Shift** while double-clicking a GCP marker to enter drag mode. Move the mouse to the desired location on the ground plane, then press **Escape** to set the new position.
 
 ### Creating Flight Paths
 1. Switch to the "Flight" tab in the workflow

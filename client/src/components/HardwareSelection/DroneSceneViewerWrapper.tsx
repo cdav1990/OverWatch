@@ -15,27 +15,33 @@ import { Box, Typography } from '@mui/material';
 import { useMission } from '../../context/MissionContext';
 import * as THREE from 'three';
 import { Camera, Lens } from '../../types/hardware';
-import { calculateFieldOfView, getEffectiveFocalLength, metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
-import { getLensFStops } from '../../utils/hardwareDatabase';
+import { calculateFieldOfView, getEffectiveFocalLength, metersToFeet, feetToMeters, getDOFCalculations } from '../../utils/sensorCalculations';
+import { getLensFStops, getCameraById, getLensById } from '../../utils/hardwareDatabase';
 import { LocalCoord } from '../../types/mission';
+
+// Default hardware IDs - moved to top level for better visibility
+const DEFAULT_CAMERA_ID = 'phase-one-ixm-100';
+const DEFAULT_LENS_ID = 'phaseone-rsm-80mm';
+const DEFAULT_FOCUS_DISTANCE_FT = 20; // in feet
 
 interface CameraFrustum3DProps {
     cameraDetails: Camera | null;
     lensDetails: Lens | null;
     focusDistanceM: number;
-    aperture?: number; // Optional, for potential future use
+    aperture?: number; // Used for DOF calculations
 }
 
 // Actual Frustum Component
 const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({ 
     cameraDetails, 
     lensDetails, 
-    focusDistanceM 
+    focusDistanceM,
+    aperture 
 }) => {
     const frustumRef = useRef<THREE.Group>(null);
     
     // If any required prop is null/undefined, return nothing
-    if (!cameraDetails || !lensDetails || focusDistanceM === undefined) {
+    if (!cameraDetails || !lensDetails || focusDistanceM === undefined || aperture === undefined) {
         return null;
     }
 
@@ -50,7 +56,12 @@ const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({
         nearWidth,
         nearHeight,
         nearPlaneDist,
-        farPlaneDist
+        farPlaneDist,
+        // DOF calculations
+        nearFocusDistanceM,
+        farFocusDistanceM,
+        dofTotalM,
+        inFocusRange
     } = useMemo(() => {
         // Default values to use in case of errors
         const defaultValues = {
@@ -64,11 +75,15 @@ const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({
             nearWidth: 0.1,
             nearHeight: 0.1,
             nearPlaneDist: 0.1,
-            farPlaneDist: 1
+            farPlaneDist: 1,
+            nearFocusDistanceM: 0,
+            farFocusDistanceM: 0,
+            dofTotalM: 0,
+            inFocusRange: false
         };
 
         try {
-            if (!cameraDetails || !lensDetails) {
+            if (!cameraDetails || !lensDetails || !aperture) {
                 return defaultValues;
             }
 
@@ -128,6 +143,15 @@ const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({
             const coverageWidthFt = metersToFeet(farWidth);
             const coverageHeightFt = metersToFeet(farHeight);
 
+            // Calculate DOF values using the utility function
+            const dofCalculations = getDOFCalculations(focusDistanceM, cameraDetails, lensDetails, aperture);
+            const nearFocusDistanceM = dofCalculations.nearLimit;
+            const farFocusDistanceM = dofCalculations.farLimit === Infinity ? focusDistanceM * 3 : dofCalculations.farLimit;
+            const dofTotalM = dofCalculations.totalDOF === Infinity ? focusDistanceM * 2 : dofCalculations.totalDOF;
+
+            // Determine if we're in the DOF range
+            const inFocusRange = (nearFocusDistanceM <= focusDistanceM && focusDistanceM <= farFocusDistanceM);
+
             return { 
                 geometry: geom, 
                 farWidth, 
@@ -139,29 +163,129 @@ const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({
                 nearWidth,
                 nearHeight,
                 nearPlaneDist,
-                farPlaneDist
+                farPlaneDist,
+                // DOF values
+                nearFocusDistanceM,
+                farFocusDistanceM,
+                dofTotalM,
+                inFocusRange
             };
         } catch (error) {
             console.error('Error calculating camera frustum:', error);
             return defaultValues;
         }
-    }, [cameraDetails, lensDetails, focusDistanceM]);
+    }, [cameraDetails, lensDetails, focusDistanceM, aperture]);
+
+    // Calculate dimensions for DOF planes
+    const { nearFocusWidth, nearFocusHeight, farFocusWidth, farFocusHeight } = useMemo(() => {
+        if (!cameraDetails || !lensDetails) {
+            return { nearFocusWidth: 0, nearFocusHeight: 0, farFocusWidth: 0, farFocusHeight: 0 };
+        }
+
+        try {
+            const focalLength = getEffectiveFocalLength(lensDetails);
+            const { sensorWidth, sensorHeight } = cameraDetails;
+
+            // Calculate FOV angles (Radians)
+            const hFOVRad = 2 * Math.atan(sensorWidth / (2 * focalLength));
+            const vFOVRad = 2 * Math.atan(sensorHeight / (2 * focalLength));
+
+            // Calculate dimensions at near focus plane
+            const nearFocusWidth = 2 * Math.tan(hFOVRad / 2) * nearFocusDistanceM;
+            const nearFocusHeight = 2 * Math.tan(vFOVRad / 2) * nearFocusDistanceM;
+
+            // Calculate dimensions at far focus plane
+            const farFocusWidth = 2 * Math.tan(hFOVRad / 2) * farFocusDistanceM;
+            const farFocusHeight = 2 * Math.tan(vFOVRad / 2) * farFocusDistanceM;
+
+            return { nearFocusWidth, nearFocusHeight, farFocusWidth, farFocusHeight };
+        } catch (error) {
+            console.error('Error calculating DOF plane dimensions:', error);
+            return { nearFocusWidth: 0, nearFocusHeight: 0, farFocusWidth: 0, farFocusHeight: 0 };
+        }
+    }, [cameraDetails, lensDetails, nearFocusDistanceM, farFocusDistanceM]);
 
     // Label Text
     const labelText = `FOV: ${horizontalFOV.toFixed(0)}°×${verticalFOV.toFixed(0)}°\nCoverage: ${coverageWidthFt.toFixed(1)}ft×${coverageHeightFt.toFixed(1)}ft`;
+    
+    // DOF text
+    const dofInfoText = `DOF: ${metersToFeet(dofTotalM).toFixed(1)}ft (${metersToFeet(nearFocusDistanceM).toFixed(1)}ft - ${
+        farFocusDistanceM === Infinity ? '∞' : metersToFeet(farFocusDistanceM).toFixed(1) + 'ft'
+    })`;
+
+    // Animation values
+    const pulseFactor = useRef(0);
+    useFrame((_, delta) => {
+        pulseFactor.current = (pulseFactor.current + delta * 0.8) % (Math.PI * 2);
+    });
+
+    // Pulse effect for DOF planes
+    const pulseMaterial = {
+        opacity: 0.25 + Math.sin(pulseFactor.current) * 0.15,
+    };
 
     return (
-        <group ref={frustumRef} position={[0, 0.5, 0]} rotation={[0, 0, 0]}> {/* Adjust initial position/rotation if needed */}
+        <group ref={frustumRef} position={[0, 0.5, 0]} rotation={[0, 0, 0]}>
             {/* Frustum Volume */}
             <mesh geometry={geometry}>
                 <meshStandardMaterial 
                     color="#4fc3f7" 
-                    opacity={0.15} 
+                    opacity={0.1} 
                     transparent 
                     side={THREE.DoubleSide} 
-                    depthWrite={false} // Allow seeing through
+                    depthWrite={false}
                 />
             </mesh>
+
+            {/* DOF Volume (Shaded area between near and far focus) - disabled for now */}
+            {false && nearFocusDistanceM > 0 && farFocusDistanceM > 0 && farFocusDistanceM !== Infinity && (
+                <group>
+                    {/* Create a custom geometry for the DOF volume */}
+                    <mesh>
+                        <bufferGeometry>
+                            <bufferAttribute 
+                                attach="attributes-position" 
+                                array={new Float32Array([
+                                    // Near focus plane
+                                    -nearFocusWidth / 2, -nearFocusHeight / 2, -nearFocusDistanceM,
+                                    nearFocusWidth / 2, -nearFocusHeight / 2, -nearFocusDistanceM,
+                                    nearFocusWidth / 2, nearFocusHeight / 2, -nearFocusDistanceM,
+                                    -nearFocusWidth / 2, nearFocusHeight / 2, -nearFocusDistanceM,
+                                    // Far focus plane
+                                    -farFocusWidth / 2, -farFocusHeight / 2, -farFocusDistanceM,
+                                    farFocusWidth / 2, -farFocusHeight / 2, -farFocusDistanceM,
+                                    farFocusWidth / 2, farFocusHeight / 2, -farFocusDistanceM,
+                                    -farFocusWidth / 2, farFocusHeight / 2, -farFocusDistanceM,
+                                ])} 
+                                count={8}
+                                itemSize={3}
+                                args={[new Float32Array(24), 3]}
+                            />
+                            <bufferAttribute 
+                                attach="index"
+                                array={new Uint16Array([
+                                    0, 1, 2, 0, 2, 3, // Near focus
+                                    4, 5, 6, 4, 6, 7, // Far focus
+                                    0, 4, 5, 0, 5, 1, // Bottom
+                                    1, 5, 6, 1, 6, 2, // Right
+                                    2, 6, 7, 2, 7, 3, // Top
+                                    3, 7, 4, 3, 4, 0, // Left
+                                ])}
+                                count={36}
+                                itemSize={1}
+                                args={[new Uint16Array(36), 1]}
+                            />
+                        </bufferGeometry>
+                        <meshStandardMaterial 
+                            color="#00ff00" 
+                            opacity={0.15} 
+                            transparent 
+                            side={THREE.DoubleSide} 
+                            depthWrite={false}
+                        />
+                    </mesh>
+                </group>
+            )}
 
             {/* Frustum Wireframe using <Line> */}
             <Line 
@@ -187,20 +311,120 @@ const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({
                 dashed={false}
             />
 
-            {/* Focus Plane (Far Plane) */}
+            {/* Near Focus Plane - with animated highlight */}
+            {nearFocusDistanceM > 0 && (
+                <>
+                    <Plane 
+                        args={[nearFocusWidth, nearFocusHeight]} 
+                        position={[0, 0, -nearFocusDistanceM]}
+                    >
+                        <meshStandardMaterial 
+                            color="#00ff00"
+                            opacity={pulseMaterial.opacity}
+                            transparent 
+                            side={THREE.DoubleSide} 
+                            depthWrite={false}
+                        />
+                    </Plane>
+                    <Line
+                        points={[
+                            [-nearFocusWidth / 2, -nearFocusHeight / 2, -nearFocusDistanceM], [nearFocusWidth / 2, -nearFocusHeight / 2, -nearFocusDistanceM],
+                            [nearFocusWidth / 2, -nearFocusHeight / 2, -nearFocusDistanceM], [nearFocusWidth / 2, nearFocusHeight / 2, -nearFocusDistanceM],
+                            [nearFocusWidth / 2, nearFocusHeight / 2, -nearFocusDistanceM], [-nearFocusWidth / 2, nearFocusHeight / 2, -nearFocusDistanceM],
+                            [-nearFocusWidth / 2, nearFocusHeight / 2, -nearFocusDistanceM], [-nearFocusWidth / 2, -nearFocusHeight / 2, -nearFocusDistanceM],
+                        ]}
+                        color="#00ff00"
+                        lineWidth={2}
+                        dashed={false}
+                    />
+                    <Text
+                        position={[-nearFocusWidth / 2 - 0.5, 0, -nearFocusDistanceM]}
+                        fontSize={0.2}
+                        color="#00ff00"
+                        anchorX="right"
+                        anchorY="middle"
+                        outlineWidth={0.01}
+                        outlineColor="#000000"
+                        rotation={[0, Math.PI / 2, 0]}
+                    >
+                        {`Near Focus: ${metersToFeet(nearFocusDistanceM).toFixed(1)}ft`}
+                    </Text>
+                </>
+            )}
+
+            {/* Far Focus Plane - disabled for now */}
+            {false && farFocusDistanceM > 0 && farFocusDistanceM !== Infinity && farFocusDistanceM <= focusDistanceM * 3 && (
+                <>
+                    <Plane 
+                        args={[farFocusWidth, farFocusHeight]} 
+                        position={[0, 0, -farFocusDistanceM]}
+                    >
+                        <meshStandardMaterial 
+                            color="#00ff00" 
+                            opacity={pulseMaterial.opacity}
+                            transparent 
+                            side={THREE.DoubleSide} 
+                            depthWrite={false}
+                        />
+                    </Plane>
+                    <Line
+                        points={[
+                            [-farFocusWidth / 2, -farFocusHeight / 2, -farFocusDistanceM], [farFocusWidth / 2, -farFocusHeight / 2, -farFocusDistanceM],
+                            [farFocusWidth / 2, -farFocusHeight / 2, -farFocusDistanceM], [farFocusWidth / 2, farFocusHeight / 2, -farFocusDistanceM],
+                            [farFocusWidth / 2, farFocusHeight / 2, -farFocusDistanceM], [-farFocusWidth / 2, farFocusHeight / 2, -farFocusDistanceM],
+                            [-farFocusWidth / 2, farFocusHeight / 2, -farFocusDistanceM], [-farFocusWidth / 2, -farFocusHeight / 2, -farFocusDistanceM],
+                        ]}
+                        color="#00ff00"
+                        lineWidth={2}
+                        dashed={false}
+                    />
+                    <Text
+                        position={[-farFocusWidth / 2 - 0.5, 0, -farFocusDistanceM]}
+                        fontSize={0.2}
+                        color="#00ff00"
+                        anchorX="right"
+                        anchorY="middle"
+                        outlineWidth={0.01}
+                        outlineColor="#000000"
+                        rotation={[0, Math.PI / 2, 0]}
+                    >
+                        {`Far Focus: ${metersToFeet(farFocusDistanceM).toFixed(1)}ft`}
+                    </Text>
+                </>
+            )}
+
+            {/* Focus Plane (Far Plane - Image Footprint) */}
             <Plane args={[farWidth, farHeight]} position={[0, 0, -focusDistanceM]}> 
                 <meshStandardMaterial 
-                    color="#4fc3f7" 
-                    opacity={0.1} 
+                    color={inFocusRange ? "#4fc3f7" : "#ff9800"} 
+                    opacity={0.2} 
                     transparent 
                     side={THREE.DoubleSide} 
                     depthWrite={false}
                 />
             </Plane>
 
-            {/* Label Text */}
+            {/* Dashed lines connecting origin to the corners of the focus plane - disabled */}
+            {false && (
+                <Line
+                    points={[
+                        [0, 0.5, 0], [-farWidth / 2, -farHeight / 2, -focusDistanceM],
+                        [0, 0.5, 0], [farWidth / 2, -farHeight / 2, -focusDistanceM],
+                        [0, 0.5, 0], [farWidth / 2, farHeight / 2, -focusDistanceM],
+                        [0, 0.5, 0], [-farWidth / 2, farHeight / 2, -focusDistanceM],
+                    ]}
+                    color="#4fc3f7"
+                    lineWidth={1}
+                    dashed={true}
+                    dashSize={0.2}
+                    dashScale={1}
+                    dashOffset={0}
+                />
+            )}
+
+            {/* Label Text for Focus Distance */}
             <Text
-                position={[0, farHeight / 2 + 0.3, -focusDistanceM]} // Position above far plane center
+                position={[0, farHeight / 2 + 0.5, -focusDistanceM]}
                 fontSize={0.3}
                 color="#ffffff"
                 anchorX="center"
@@ -208,8 +432,41 @@ const CameraFrustum3D: React.FC<CameraFrustum3DProps> = ({
                 outlineWidth={0.01}
                 outlineColor="#000000"
             >
+                {`Focus Distance: ${metersToFeet(focusDistanceM).toFixed(1)}ft`}
+            </Text>
+
+            {/* DOF Information Label */}
+            <Text
+                position={[0, farHeight / 2 + 0.9, -focusDistanceM]}
+                fontSize={0.25}
+                color={inFocusRange ? "#00ff00" : "#ff9800"}
+                anchorX="center"
+                anchorY="middle"
+                outlineWidth={0.01}
+                outlineColor="#000000"
+            >
+                {dofInfoText}
+            </Text>
+
+            {/* Image Footprint Info */}
+            <Text
+                position={[0, -farHeight / 2 - 0.4, -focusDistanceM]}
+                fontSize={0.25}
+                color="#4fc3f7"
+                anchorX="center"
+                anchorY="middle"
+                outlineWidth={0.01}
+                outlineColor="#000000"
+            >
                 {labelText}
             </Text>
+
+            {/* Camera Origin Indicator - disabled */}
+            {false && (
+                <Sphere args={[0.1]} position={[0, 0.5, 0]}>
+                    <meshStandardMaterial color="#ffffff" />
+                </Sphere>
+            )}
         </group>
     );
 }
@@ -431,12 +688,16 @@ const DroneSceneViewerWrapper: React.FC = () => {
     const focusDistanceM = hardware?.focusDistance;
     const aperture = hardware?.fStop;
 
+    // Track if initial default setting has been done
+    const hasSetDefaults = useRef(false);
+
     // Create these memo values regardless of condition to maintain consistent hook calls
     const frustumProps = useMemo(() => ({
         cameraDetails: cameraDetails || null,
         lensDetails: lensDetails || null,
-        focusDistanceM: focusDistanceM || 0
-    }), [cameraDetails, lensDetails, focusDistanceM]);
+        focusDistanceM: focusDistanceM || 0,
+        aperture: aperture || 0 // Add aperture to the props
+    }), [cameraDetails, lensDetails, focusDistanceM, aperture]);
 
     // Position the drone at the focus distance - keep this outside the conditional render
     const dronePosition: LocalCoord = useMemo(() => ({
@@ -445,12 +706,69 @@ const DroneSceneViewerWrapper: React.FC = () => {
         z: 0.5 // Slightly elevated from ground
     }), []);
 
+    // Set default hardware values when component mounts
+    useEffect(() => {
+        if (!dispatch || hasSetDefaults.current) return;
+
+        // Only set defaults if hardware selection doesn't exist
+        if (!hardware || !hardware.camera || !hardware.lens) {
+            // Get camera and lens objects
+            const defaultCamera = getCameraById(DEFAULT_CAMERA_ID);
+            const defaultLens = getLensById(DEFAULT_LENS_ID);
+            
+            if (defaultCamera && defaultLens) {
+                // 1. Set default camera
+                dispatch({
+                    type: 'UPDATE_HARDWARE_FIELD',
+                    payload: { field: 'camera', value: DEFAULT_CAMERA_ID }
+                });
+                dispatch({
+                    type: 'UPDATE_HARDWARE_FIELD',
+                    payload: { field: 'cameraDetails', value: defaultCamera }
+                });
+                
+                // 2. Set default lens
+                dispatch({
+                    type: 'UPDATE_HARDWARE_FIELD',
+                    payload: { field: 'lens', value: DEFAULT_LENS_ID }
+                });
+                dispatch({
+                    type: 'UPDATE_HARDWARE_FIELD',
+                    payload: { field: 'lensDetails', value: defaultLens }
+                });
+                
+                // 3. Set default focus distance (convert from feet to meters)
+                const defaultFocusDistance = feetToMeters(DEFAULT_FOCUS_DISTANCE_FT);
+                dispatch({
+                    type: 'UPDATE_HARDWARE_FIELD',
+                    payload: { field: 'focusDistance', value: defaultFocusDistance }
+                });
+
+                // 4. Set lowest f-stop (if available)
+                const fStops = getLensFStops(defaultLens);
+                if (fStops && fStops.length > 0) {
+                    const lowestFStop = Math.min(...fStops);
+                    dispatch({
+                        type: 'UPDATE_HARDWARE_FIELD',
+                        payload: { field: 'fStop', value: lowestFStop }
+                    });
+                }
+            }
+            
+            // Mark that we've set the defaults
+            hasSetDefaults.current = true;
+        } else {
+            // If hardware already exists, still mark as initialized
+            hasSetDefaults.current = true;
+        }
+    }, [hardware, dispatch]);
+
     // Set default focus distance and lowest f-stop when lens changes
     useEffect(() => {
         if (lensDetails && dispatch) {
             try {
                 // Default focus distance to 20ft (convert to meters)
-                const defaultFocusDistance = feetToMeters(20);
+                const defaultFocusDistance = feetToMeters(DEFAULT_FOCUS_DISTANCE_FT);
                 
                 // Get available f-stops and select the lowest (widest aperture)
                 const fStops = getLensFStops(lensDetails);

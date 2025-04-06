@@ -12,6 +12,7 @@ import {
     Divider
 } from '@mui/material';
 import { SceneSettings } from '../../context/MissionContext'; // Adjust path as needed
+import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
 
 interface SceneSettingsPanelProps {
     settings: SceneSettings;
@@ -42,7 +43,6 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
         }
     };
 
-
     return (
         <Paper elevation={0} sx={{ p: 2, bgcolor: 'transparent' }}> {/* Use transparent background */}
             <Stack spacing={3}>
@@ -57,19 +57,15 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                 label={<Typography variant="body2">Visible</Typography>}
                             />
                         </Grid>
-                         <Grid item xs={12} sm={6}>
+                        <Grid item xs={12} sm={6}>
                             <Typography variant="body2" gutterBottom id="grid-size-label">
-                                Size ({settings.gridSize})
+                                Grid Scale: 300 meters (984 feet)
                             </Typography>
-                            <Slider
-                                aria-labelledby="grid-size-label"
-                                value={settings.gridSize}
-                                onChange={(e, v) => handleSliderChange('gridSize', e, v)}
-                                min={10} max={1000} step={10}
-                                size="small"
-                            />
+                            <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
+                                Fixed for consistent visualization
+                            </Typography>
                         </Grid>
-                         <Grid item xs={12} sm={6}>
+                        <Grid item xs={12} sm={6}>
                             <Typography variant="body2" gutterBottom id="grid-div-label">
                                 Divisions ({settings.gridDivisions})
                             </Typography>

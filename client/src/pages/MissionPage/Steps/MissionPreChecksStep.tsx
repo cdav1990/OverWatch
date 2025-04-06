@@ -24,6 +24,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useMission } from '../../../context/MissionContext';
 import { GCP, LocalCoord, SafetyParams } from '../../../types/mission'; // Import types
 import { generateUUID } from '../../../utils/coordinateUtils'; // Import utility
+import { metersToFeet, feetToMeters } from '../../../utils/sensorCalculations'; // Import conversion functions
 
 // Placeholder for interacting with the 3D viewer to select a point
 const selectPointOnMap = async (): Promise<LocalCoord | null> => {
@@ -73,12 +74,12 @@ const MissionPreChecksStep: React.FC = () => {
     
     const handleEditGcp = (gcp: GCP) => {
         setEditingGcpId(gcp.id);
-        // Initialize edit state with current GCP data (converted to strings)
+        // Initialize edit state with current GCP data (converted from meters to feet)
         setEditedGcpData({ 
             name: gcp.name,
-            x: String(gcp.local.x),
-            y: String(gcp.local.y),
-            z: String(gcp.local.z),
+            x: String(metersToFeet(gcp.local.x)),
+            y: String(metersToFeet(gcp.local.y)),
+            z: String(metersToFeet(gcp.local.z)),
         }); 
     };
 
@@ -96,32 +97,38 @@ const MissionPreChecksStep: React.FC = () => {
     };
 
     // Save: Parse strings, validate, and dispatch update
+    // Values entered by user are in feet, convert to meters for storage
     const handleSaveGcp = () => {
         if (!editingGcpId || !currentMission) return;
         
         const gcpToUpdate = currentMission.gcps.find(g => g.id === editingGcpId);
         if (!gcpToUpdate) return;
 
-        // Parse coordinates from the string edit state
-        const parsedX = parseFloat(editedGcpData.x);
-        const parsedY = parseFloat(editedGcpData.y);
-        const parsedZ = parseFloat(editedGcpData.z);
+        // Parse coordinates from the string edit state (values in feet)
+        const parsedXFeet = parseFloat(editedGcpData.x);
+        const parsedYFeet = parseFloat(editedGcpData.y);
+        const parsedZFeet = parseFloat(editedGcpData.z);
 
         // Validate parsed numbers
-        if (isNaN(parsedX) || isNaN(parsedY) || isNaN(parsedZ)) {
+        if (isNaN(parsedXFeet) || isNaN(parsedYFeet) || isNaN(parsedZFeet)) {
             console.error("Invalid coordinate format entered. Please enter numbers.");
             // TODO: Show user feedback (e.g., using a Snackbar)
             return; 
         }
+
+        // Convert feet to meters for internal storage
+        const parsedXMeters = feetToMeters(parsedXFeet);
+        const parsedYMeters = feetToMeters(parsedYFeet);
+        const parsedZMeters = feetToMeters(parsedZFeet);
 
         // Construct the final GCP object for dispatch
         const updatedGcp: GCP = {
             ...gcpToUpdate, // Keep original non-edited fields (lat, lng, etc.)
             name: editedGcpData.name.trim() || gcpToUpdate.name, // Use trimmed edited name or fallback
             local: {
-                x: parsedX,
-                y: parsedY,
-                z: parsedZ,
+                x: parsedXMeters,
+                y: parsedYMeters,
+                z: parsedZMeters,
             }
         };
 
@@ -134,12 +141,20 @@ const MissionPreChecksStep: React.FC = () => {
     };
 
     // Handler for safety parameter changes
+    // Convert from feet to meters when sending to state
     const handleSafetyParamChange = (param: keyof SafetyParams, value: any) => {
         let processedValue = value;
-        // Ensure numeric conversion for sliders/numeric fields
-        if (typeof value === 'number' || param === 'rtlAltitude' || param === 'climbSpeed') {
-             processedValue = parseFloat(value);
-             if (isNaN(processedValue)) return; // Prevent NaN updates
+        
+        // Handle numeric conversions for rtlAltitude and climbSpeed
+        if (param === 'rtlAltitude') {
+            // Value is in feet from slider, convert to meters for storage
+            processedValue = feetToMeters(parseFloat(value)); 
+            if (isNaN(processedValue)) return; // Prevent NaN updates
+        } 
+        else if (param === 'climbSpeed') {
+            // Keep climb speed in meters per second (no conversion needed)
+            processedValue = parseFloat(value);
+            if (isNaN(processedValue)) return; // Prevent NaN updates
         }
         
         dispatch({
@@ -170,7 +185,9 @@ const MissionPreChecksStep: React.FC = () => {
                 </Button>
                 {currentMission.takeoffPoint ? (
                      <Typography variant="body2">
-                         Set: (X: {currentMission.takeoffPoint.x.toFixed(1)}, Y: {currentMission.takeoffPoint.y.toFixed(1)}, Z: {currentMission.takeoffPoint.z.toFixed(1)})
+                         Set: (X: {metersToFeet(currentMission.takeoffPoint.x).toFixed(1)}, 
+                              Y: {metersToFeet(currentMission.takeoffPoint.y).toFixed(1)}, 
+                              Z: {metersToFeet(currentMission.takeoffPoint.z).toFixed(1)}) ft
                      </Typography>
                 ) : (
                     <Typography variant="body2" color="textSecondary">Not Set</Typography>
@@ -211,20 +228,20 @@ const MissionPreChecksStep: React.FC = () => {
                                             size="small" variant="outlined" sx={{ flexGrow: 1 }}
                                         />
                                         <TextField 
-                                            label="X" 
+                                            label="X (ft)" 
                                             value={editedGcpData.x} 
                                             onChange={(e) => handleEditFieldChange('x', e.target.value)}
                                             size="small" variant="outlined" sx={{ width: '70px' }} 
                                             // type="number" // Keep as text to allow intermediate invalid states
                                         />
                                         <TextField 
-                                            label="Y" 
+                                            label="Y (ft)" 
                                             value={editedGcpData.y} 
                                             onChange={(e) => handleEditFieldChange('y', e.target.value)}
                                             size="small" variant="outlined" sx={{ width: '70px' }} 
                                         />
                                         <TextField 
-                                            label="Z" 
+                                            label="Z (ft)" 
                                             value={editedGcpData.z} 
                                             onChange={(e) => handleEditFieldChange('z', e.target.value)}
                                             size="small" variant="outlined" sx={{ width: '70px' }} 
@@ -239,9 +256,15 @@ const MissionPreChecksStep: React.FC = () => {
                                 // --- READ-ONLY VIEW ---
                                 <Stack direction="row" spacing={1} alignItems="center">
                                     <Typography variant="body2" sx={{ flexGrow: 1, fontWeight: 'medium' }}>{gcp.name}</Typography>
-                                    <Typography variant="body2" sx={{ width: '60px', textAlign: 'right' }}>X: {gcp.local.x.toFixed(2)}</Typography>
-                                    <Typography variant="body2" sx={{ width: '60px', textAlign: 'right' }}>Y: {gcp.local.y.toFixed(2)}</Typography>
-                                    <Typography variant="body2" sx={{ width: '60px', textAlign: 'right' }}>Z: {gcp.local.z.toFixed(2)}</Typography>
+                                    <Typography variant="body2" sx={{ width: '60px', textAlign: 'right' }}>
+                                        X: {metersToFeet(gcp.local.x).toFixed(1)}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ width: '60px', textAlign: 'right' }}>
+                                        Y: {metersToFeet(gcp.local.y).toFixed(1)}
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ width: '60px', textAlign: 'right' }}>
+                                        Z: {metersToFeet(gcp.local.z).toFixed(1)}
+                                    </Typography>
                                     <IconButton size="small" onClick={() => handleEditGcp(gcp)}> 
                                         <EditIcon fontSize="inherit" />
                                     </IconButton>
@@ -263,25 +286,27 @@ const MissionPreChecksStep: React.FC = () => {
                  {/* RTL Altitude */} 
                  <Grid item xs={12}> 
                     <Typography variant="body2" gutterBottom id="rtl-altitude-slider-label">
-                        Return-To-Launch Altitude (m)
+                        Return-To-Launch Altitude (ft)
                     </Typography>
                     <Stack direction="row" spacing={2} alignItems="center">
                         <Slider
                             aria-labelledby="rtl-altitude-slider-label"
-                            value={currentMission.safetyParams?.rtlAltitude ?? 50}
+                            value={metersToFeet(currentMission.safetyParams?.rtlAltitude ?? 50)}
                             onChange={(event, newValue) => handleSafetyParamChange('rtlAltitude', newValue as number)}
-                            min={10} max={200} step={5}
+                            min={30}
+                            max={650}
+                            step={10}
                             valueLabelDisplay="auto" 
                             sx={{ flexGrow: 1 }}
                         />
-                        <Typography variant="body2" sx={{ minWidth: '40px', textAlign: 'right' }}>
-                            {currentMission.safetyParams?.rtlAltitude ?? 50} m
+                        <Typography variant="body2" sx={{ minWidth: '60px', textAlign: 'right' }}>
+                            {metersToFeet(currentMission.safetyParams?.rtlAltitude ?? 50).toFixed(0)} ft
                         </Typography>
                     </Stack>
-                    <Typography variant="caption" display="block" sx={{mt: 0.5}}>Altitude relative to takeoff for RTL.</Typography>
+                    <Typography variant="caption" display="block" sx={{mt:.5}}>Altitude relative to takeoff for RTL.</Typography>
                  </Grid>
 
-                 {/* Climb Speed */} 
+                 {/* Climb Speed - Keep in m/s as it's a velocity */} 
                  <Grid item xs={12}> 
                      <Typography variant="body2" gutterBottom id="climb-speed-slider-label">
                          Default Climb Speed (m/s)
@@ -295,7 +320,7 @@ const MissionPreChecksStep: React.FC = () => {
                              valueLabelDisplay="auto"
                              sx={{ flexGrow: 1 }}
                          />
-                         <Typography variant="body2" sx={{ minWidth: '40px', textAlign: 'right' }}>
+                         <Typography variant="body2" sx={{ minWidth: '60px', textAlign: 'right' }}>
                              {(currentMission.safetyParams?.climbSpeed ?? 2.0).toFixed(1)} m/s
                          </Typography>
                      </Stack>
