@@ -1,6 +1,6 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Plane, Line } from '@react-three/drei';
+import { Plane, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { Camera, Lens } from '../../../types/hardware';
 import {
@@ -21,6 +21,8 @@ export interface CameraFrustumProps {
         showFarFocusPlane?: boolean;
         showFocusPlaneInfo?: boolean;
         showDOFInfo?: boolean;
+        showFootprintInfo?: boolean;
+        showFocusPlaneLabels?: boolean;
     };
 }
 
@@ -32,8 +34,10 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
     visualization = {
         showNearFocusPlane: true,
         showFarFocusPlane: false,
-        showFocusPlaneInfo: false,
-        showDOFInfo: false
+        showFocusPlaneInfo: true,
+        showDOFInfo: true,
+        showFootprintInfo: true,
+        showFocusPlaneLabels: true
     }
 }) => {
     const frustumRef = useRef<THREE.Group>(null);
@@ -199,6 +203,18 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
         }
     }, [cameraDetails, lensDetails, nearFocusDistanceM, farFocusDistanceM]);
 
+    // Create DOF info text
+    const dofInfoText = useMemo(() => {
+        return `DOF: ${metersToFeet(dofTotalM).toFixed(1)}ft (${metersToFeet(nearFocusDistanceM).toFixed(1)}ft - ${
+            farFocusDistanceM === Infinity ? '∞' : metersToFeet(farFocusDistanceM).toFixed(1) + 'ft'
+        })`;
+    }, [dofTotalM, nearFocusDistanceM, farFocusDistanceM]);
+
+    // Create footprint info text
+    const footprintInfoText = useMemo(() => {
+        return `FOV: ${horizontalFOV.toFixed(0)}°×${verticalFOV.toFixed(0)}°  |  Coverage: ${coverageWidthFt.toFixed(1)}ft×${coverageHeightFt.toFixed(1)}ft`;
+    }, [horizontalFOV, verticalFOV, coverageWidthFt, coverageHeightFt]);
+
     // Animation values
     const pulseFactor = useRef(0);
     useFrame((_, delta) => {
@@ -208,6 +224,17 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
     // Pulse effect for DOF planes
     const pulseMaterial = {
         opacity: 0.25 + Math.sin(pulseFactor.current) * 0.15,
+    };
+
+    // Common text style for all labels
+    const commonTextStyle = {
+        fontSize: '24px',
+        fontWeight: 'bold',
+        padding: '4px 12px',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: '8px',
+        textShadow: '2px 2px 4px black',
+        whiteSpace: 'nowrap'
     };
 
     return (
@@ -249,34 +276,70 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
 
             {/* Near Focus Plane - with animated highlight */}
             {visualization.showNearFocusPlane && nearFocusDistanceM > 0 && (
-                <Plane
-                    args={[nearFocusWidth, nearFocusHeight]}
-                    position={[0, 0, -nearFocusDistanceM]}
-                >
-                    <meshStandardMaterial
-                        color="#00ff00"
-                        opacity={pulseMaterial.opacity}
-                        transparent
-                        side={THREE.DoubleSide}
-                        depthWrite={false}
-                    />
-                </Plane>
+                <>
+                    <Plane
+                        args={[nearFocusWidth, nearFocusHeight]}
+                        position={[0, 0, -nearFocusDistanceM]}
+                    >
+                        <meshStandardMaterial
+                            color="#00ff00"
+                            opacity={pulseMaterial.opacity}
+                            transparent
+                            side={THREE.DoubleSide}
+                            depthWrite={false}
+                        />
+                    </Plane>
+                    
+                    {/* Near Focus Plane Label */}
+                    {visualization.showFocusPlaneLabels && (
+                        <Html
+                            position={[-nearFocusWidth / 2 - 0.5, 0, -nearFocusDistanceM]}
+                            center
+                            sprite
+                        >
+                            <div style={{ 
+                                ...commonTextStyle,
+                                color: '#00ff00'
+                            }}>
+                                Near Focus: {metersToFeet(nearFocusDistanceM).toFixed(1)}ft
+                            </div>
+                        </Html>
+                    )}
+                </>
             )}
 
             {/* Far Focus Plane - only show when explicitly enabled */}
             {visualization.showFarFocusPlane && farFocusDistanceM > 0 && farFocusDistanceM !== Infinity && farFocusDistanceM <= focusDistanceM * 3 && (
-                <Plane
-                    args={[farFocusWidth, farFocusHeight]}
-                    position={[0, 0, -farFocusDistanceM]}
-                >
-                    <meshStandardMaterial
-                        color="#00ff00"
-                        opacity={pulseMaterial.opacity}
-                        transparent
-                        side={THREE.DoubleSide}
-                        depthWrite={false}
-                    />
-                </Plane>
+                <>
+                    <Plane
+                        args={[farFocusWidth, farFocusHeight]}
+                        position={[0, 0, -farFocusDistanceM]}
+                    >
+                        <meshStandardMaterial
+                            color="#00ff00"
+                            opacity={pulseMaterial.opacity}
+                            transparent
+                            side={THREE.DoubleSide}
+                            depthWrite={false}
+                        />
+                    </Plane>
+                    
+                    {/* Far Focus Plane Label */}
+                    {visualization.showFocusPlaneLabels && (
+                        <Html
+                            position={[-farFocusWidth / 2 - 0.5, 0, -farFocusDistanceM]}
+                            center
+                            sprite
+                        >
+                            <div style={{ 
+                                ...commonTextStyle,
+                                color: '#00ff00'
+                            }}>
+                                Far Focus: {metersToFeet(farFocusDistanceM).toFixed(1)}ft
+                            </div>
+                        </Html>
+                    )}
+                </>
             )}
 
             {/* Focus Plane (Far Plane - Image Footprint) */}
@@ -289,6 +352,54 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
                     depthWrite={false}
                 />
             </Plane>
+
+            {/* Focus Plane Information - shown conditionally */}
+            {visualization.showFocusPlaneInfo && (
+                <Html
+                    position={[0, farHeight / 2 + 0.4, -focusDistanceM]}
+                    center
+                    sprite
+                >
+                    <div style={{ 
+                        ...commonTextStyle,
+                        color: 'white'
+                    }}>
+                        Focus Distance: {metersToFeet(focusDistanceM).toFixed(1)}ft
+                    </div>
+                </Html>
+            )}
+
+            {/* DOF Information Label - shown conditionally */}
+            {visualization.showDOFInfo && (
+                <Html
+                    position={[0, farHeight / 2 + 0.9, -focusDistanceM]}
+                    center
+                    sprite
+                >
+                    <div style={{ 
+                        ...commonTextStyle,
+                        color: inFocusRange ? "#00ff00" : "#ff9800"
+                    }}>
+                        {dofInfoText}
+                    </div>
+                </Html>
+            )}
+
+            {/* Footprint Information - shown conditionally */}
+            {visualization.showFootprintInfo && (
+                <Html
+                    position={[0, -farHeight / 2 - 0.4, -focusDistanceM]}
+                    center
+                    sprite
+                >
+                    <div style={{ 
+                        ...commonTextStyle,
+                        color: '#4fc3f7'
+                    }}>
+                        {footprintInfoText}
+                    </div>
+                </Html>
+            )}
         </group>
     );
 };

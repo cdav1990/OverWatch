@@ -161,6 +161,8 @@ interface HardwareVisualizationSettingsProps {
         showFarFocusPlane: boolean;
         showFocusPlaneInfo: boolean;
         showDOFInfo: boolean;
+        showFootprintInfo: boolean;
+        showFocusPlaneLabels: boolean;
     }) => void;
 }
 
@@ -179,8 +181,10 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     const [visualizationSettings, setVisualizationSettings] = useState({
         showNearFocusPlane: true,
         showFarFocusPlane: false,
-        showFocusPlaneInfo: true,
-        showDOFInfo: true
+        showFocusPlaneInfo: false,
+        showDOFInfo: false,
+        showFootprintInfo: false,
+        showFocusPlaneLabels: false
     });
 
     // Get available cameras and lenses
@@ -341,6 +345,24 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
             type: 'UPDATE_HARDWARE_FIELD',
             payload: { field: 'focusDistance', value: focusDistanceMeters }
         });
+    };
+
+    // Handle focus distance input change
+    const handleFocusDistanceInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        let value = parseInt(event.target.value);
+        
+        // Validate input (1-400 feet)
+        if (!isNaN(value)) {
+            if (value < 1) value = 1;
+            if (value > 400) value = 400;
+            
+            const focusDistanceMeters = feetToMeters(value);
+            
+            dispatch({
+                type: 'UPDATE_HARDWARE_FIELD',
+                payload: { field: 'focusDistance', value: focusDistanceMeters }
+            });
+        }
     };
 
     // Toggle camera frustum visibility
@@ -529,16 +551,41 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                 <StyledSlider 
                     value={hardware?.focusDistance ? metersToFeet(hardware.focusDistance) : 20}
                     onChange={handleFocusDistanceChange}
-                    min={5}
-                    max={1000}
-                    step={10}
+                    min={1}
+                    max={400}
+                    step={1}
                     valueLabelDisplay="auto"
                     valueLabelFormat={(value) => `${value} ft`}
                     disabled={!hardware?.lens}
+                    sx={{ flexGrow: 0.7 }}
                 />
-                <ValueDisplay>
-                    {hardware?.focusDistance ? metersToFeet(hardware.focusDistance).toFixed(1) : 0} ft
-                </ValueDisplay>
+                <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    gap: 1,
+                    width: '120px',
+                    justifyContent: 'flex-end'
+                }}>
+                    <input
+                        type="number"
+                        value={hardware?.focusDistance ? Math.round(metersToFeet(hardware.focusDistance)) : 20}
+                        onChange={handleFocusDistanceInputChange}
+                        disabled={!hardware?.lens}
+                        min={1}
+                        max={400}
+                        style={{
+                            width: '60px',
+                            padding: '4px 8px',
+                            backgroundColor: 'rgba(40, 40, 40, 0.9)',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '4px',
+                            color: '#4fc3f7',
+                            fontSize: '0.9rem',
+                            textAlign: 'right'
+                        }}
+                    />
+                    <Typography sx={{ color: '#ddd', fontSize: '0.8rem' }}>ft</Typography>
+                </Box>
             </ControlRow>
 
             <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', mt: 1, mb: 1 }} />
@@ -559,7 +606,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
             </ControlRow>
 
             {/* Depth of Field Visualization */}
-            <SectionTitle>Depth of Field Settings</SectionTitle>
+            <SectionTitle>Visualization Planes</SectionTitle>
             <ControlRow>
                 <FormControlLabel
                     control={
@@ -590,6 +637,34 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                 <FormControlLabel
                     control={
                         <StyledSwitch 
+                            checked={visualizationSettings.showFocusPlaneLabels}
+                            onChange={() => handleVisualizationSettingChange('showFocusPlaneLabels')}
+                            disabled={!isCameraFrustumVisible}
+                        />
+                    }
+                    label="Show Focus Plane Labels"
+                    sx={{ fontSize: '0.85rem', color: '#ddd' }}
+                />
+            </ControlRow>
+            
+            <SectionTitle>Information Display</SectionTitle>
+            <ControlRow>
+                <FormControlLabel
+                    control={
+                        <StyledSwitch 
+                            checked={visualizationSettings.showFocusPlaneInfo}
+                            onChange={() => handleVisualizationSettingChange('showFocusPlaneInfo')}
+                            disabled={!isCameraFrustumVisible}
+                        />
+                    }
+                    label="Show Focus Plane Details"
+                    sx={{ fontSize: '0.85rem', color: '#ddd' }}
+                />
+            </ControlRow>
+            <ControlRow>
+                <FormControlLabel
+                    control={
+                        <StyledSwitch 
                             checked={visualizationSettings.showDOFInfo}
                             onChange={() => handleVisualizationSettingChange('showDOFInfo')}
                             disabled={!isCameraFrustumVisible}
@@ -603,12 +678,12 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                 <FormControlLabel
                     control={
                         <StyledSwitch 
-                            checked={visualizationSettings.showFocusPlaneInfo}
-                            onChange={() => handleVisualizationSettingChange('showFocusPlaneInfo')}
+                            checked={visualizationSettings.showFootprintInfo}
+                            onChange={() => handleVisualizationSettingChange('showFootprintInfo')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }
-                    label="Show Focus Plane Details"
+                    label="Show Image Footprint Info"
                     sx={{ fontSize: '0.85rem', color: '#ddd' }}
                 />
             </ControlRow>

@@ -78,7 +78,9 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
     showNearFocusPlane: true,
     showFarFocusPlane: false,
     showFocusPlaneInfo: false,
-    showDOFInfo: false
+    showDOFInfo: false,
+    showFootprintInfo: false,
+    showFocusPlaneLabels: false
   });
 
   // Determine the current drone position
