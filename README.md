@@ -57,10 +57,40 @@ npm install
 
 3. Start the development server:
 ```bash
-# Start client
+# Start client (optimized fast startup)
 cd client
 npm run dev
+
+# Or use the full startup if Cesium assets need updating
+npm run dev:full
 ```
+
+### Startup Options
+
+- **Fast Startup (Recommended)**: `npm run dev` - Uses cached Cesium assets for faster startup (10 seconds+)
+- **Full Startup**: `npm run dev:full` - Verifies and updates Cesium assets if needed (slower startup)
+
+### Performance Optimizations
+
+Overwatch includes several optimizations to improve startup time and runtime performance:
+
+1. **Lazy Loading & Code Splitting**
+   - Components load only when needed
+   - ThreeJS and heavy libraries are split into smaller chunks
+
+2. **Three.js Performance Optimizations**
+   - Deferred rendering with adaptive frame rates
+   - Instanced meshes for repeated objects
+   - Geometry batching to reduce draw calls
+   - Texture optimization and caching
+   - Level of Detail (LOD) management
+
+3. **Build Optimizations**
+   - Advanced bundler configuration for optimal loading
+   - Conditional asset loading
+   - Smart caching of static assets
+
+These optimizations ensure the application performs well on a variety of hardware, from high-end workstations to more modest systems.
 
 ## Usage Guide
 

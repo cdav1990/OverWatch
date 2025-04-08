@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { DroneState, HeartbeatMessage } from '../types/drone';
+import { SystemHealth } from './apiService';
 
 // Define the server URL
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -63,6 +64,11 @@ class SocketService {
     this.socket?.on('drone:heartbeat', callback);
   }
 
+  // Subscribe to system health updates
+  on(event: 'system:health', callback: (data: SystemHealth) => void): void {
+    this.socket?.on(event, callback);
+  }
+
   // Unsubscribe from drone state updates
   offDroneState(callback: (state: DroneState) => void): void {
     this.socket?.off('drone:state', callback);
@@ -71,6 +77,11 @@ class SocketService {
   // Unsubscribe from heartbeat updates
   offHeartbeat(callback: (heartbeat: HeartbeatMessage) => void): void {
     this.socket?.off('drone:heartbeat', callback);
+  }
+
+  // Unsubscribe from a specific event
+  off(event: 'system:health', callback: (data: SystemHealth) => void): void {
+    this.socket?.off(event, callback);
   }
 
   // Send a command to the drone

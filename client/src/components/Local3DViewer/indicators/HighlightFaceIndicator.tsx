@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { SelectedFaceInfo } from '../../../context/MissionContext';
 import { feetToMeters } from '../../../utils/sensorCalculations';
+import { MeshBVH, computeBoundsTree } from 'three-mesh-bvh';
 
 interface HighlightFaceIndicatorProps {
   faceInfo: SelectedFaceInfo;
@@ -15,23 +16,29 @@ const HighlightFaceIndicator: React.FC<HighlightFaceIndicatorProps> = ({ faceInf
     return null;
   }
 
-  // Convert vertices to shape (using the same logic as SelectedFaceIndicator)
+  // --- Reconstruct THREE objects --- 
+  const normalVec = useMemo(() => new THREE.Vector3(faceInfo.normal.x, faceInfo.normal.y, faceInfo.normal.z), [faceInfo.normal]);
+  const verticesVec = useMemo(() => 
+      faceInfo.vertices.map(v => new THREE.Vector3(v.x, v.y, v.z))
+  , [faceInfo.vertices]);
+  // --- End reconstruction --- 
+
+  // Create a shape from the vertices
   const shape = useMemo(() => {
     const shape = new THREE.Shape();
     if (faceInfo.vertices.length > 0) {
       const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-        faceInfo.normal,
-        faceInfo.vertices[0]
+        normalVec,
+        verticesVec[0]
       );
       const basis1 = new THREE.Vector3(1, 0, 0);
-      if (Math.abs(basis1.dot(faceInfo.normal)) > 0.999) {
+      if (Math.abs(basis1.dot(normalVec)) > 0.999) {
         basis1.set(0, 1, 0);
       }
-      basis1.cross(faceInfo.normal).normalize();
-      const basis2 = new THREE.Vector3().crossVectors(faceInfo.normal, basis1).normalize();
-      const points2D: [number, number][] = faceInfo.vertices.map(v => {
-        const projected = v.clone();
-        return [projected.dot(basis1), projected.dot(basis2)];
+      basis1.cross(normalVec).normalize();
+      const basis2 = new THREE.Vector3().crossVectors(normalVec, basis1).normalize();
+      const points2D: [number, number][] = verticesVec.map(v => {
+        return [v.dot(basis1), v.dot(basis2)];
       });
       shape.moveTo(points2D[0][0], points2D[0][1]);
       for (let i = 1; i < points2D.length; i++) {
@@ -46,12 +53,12 @@ const HighlightFaceIndicator: React.FC<HighlightFaceIndicatorProps> = ({ faceInf
   const offsetDistance = feetToMeters(5); // Convert 5 feet to meters
   const centerPoint = useMemo(() => {
     const center = new THREE.Vector3();
-    faceInfo.vertices.forEach(v => center.add(v));
-    center.divideScalar(faceInfo.vertices.length);
+    verticesVec.forEach(v => center.add(v));
+    center.divideScalar(verticesVec.length);
     // Move 5 feet in the direction of the normal
-    center.addScaledVector(faceInfo.normal, offsetDistance);
+    center.addScaledVector(normalVec, offsetDistance);
     return center;
-  }, [faceInfo, offsetDistance]);
+  }, [verticesVec, normalVec, offsetDistance]);
 
   // Calculate rotation to match the face orientation (using the same logic)
   const rotation = useMemo(() => {
@@ -59,12 +66,12 @@ const HighlightFaceIndicator: React.FC<HighlightFaceIndicatorProps> = ({ faceInf
     // Use the same basis for calculating rotation as the SelectedFaceIndicator
     // For simplicity, we rotate from Z-up (0,0,1) to the face normal
     const defaultUp = new THREE.Vector3(0, 0, 1); // Default orientation for the shape geometry
-    quaternion.setFromUnitVectors(defaultUp, faceInfo.normal);
+    quaternion.setFromUnitVectors(defaultUp, normalVec);
 
     // Convert to Euler angles
     const euler = new THREE.Euler().setFromQuaternion(quaternion);
     return [euler.x, euler.y, euler.z];
-  }, [faceInfo.normal]);
+  }, [normalVec]);
 
   // Use a simple red material
   const material = useMemo(() => new THREE.MeshBasicMaterial({
@@ -75,8 +82,12 @@ const HighlightFaceIndicator: React.FC<HighlightFaceIndicatorProps> = ({ faceInf
     depthWrite: false // Avoid interfering with depth buffer
   }), []);
 
+  // Position the highlight with a small offset in normal direction
+  const offset = 0.01; // Small offset to prevent z-fighting
+  const offsetPosition = centerPoint.clone().addScaledVector(faceInfo.normal, offset);
+
   return (
-    <group position={centerPoint.toArray()} rotation={rotation as any}>
+    <group position={offsetPosition.toArray()} rotation={rotation as any}>
       <mesh geometry={new THREE.ShapeGeometry(shape)} material={material} />
     </group>
   );

@@ -183,6 +183,20 @@ const SceneObjectEditModal: React.FC<SceneObjectEditModalProps> = ({ objectId, o
     // Store dimensions in meters internally
     const [dimensions, setDimensions] = useState<{ width: number; length: number; height: number }>({ width: 0, length: 0, height: 0 });
 
+    // Add Escape key handling
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && open) {
+                onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [open, onClose]);
+
     // Find the object to edit when the modal opens or objectId changes
     const objectToEdit = useMemo(() => {
         return state.sceneObjects.find(obj => obj.id === objectId);
@@ -493,6 +507,19 @@ const SceneObjectEditModal: React.FC<SceneObjectEditModalProps> = ({ objectId, o
                 >
                     Save Changes
                 </Button>
+                <Typography 
+                    variant="caption" 
+                    sx={{ 
+                        color: 'rgba(255, 255, 255, 0.4)', 
+                        fontSize: '0.7rem',
+                        fontStyle: 'italic',
+                        position: 'absolute',
+                        left: '16px',
+                        bottom: '8px'
+                    }}
+                >
+                    Press ESC to close
+                </Typography>
             </StyledDialogActions>
         </StyledDialog>
     );

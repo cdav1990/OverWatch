@@ -150,6 +150,20 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     useEffect(() => {
         setCameraFollows(initialCameraFollow);
     }, [initialCameraFollow]);
+    
+    // Add Escape key handling
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && isOpen) {
+                onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen, onClose]);
 
     // Handlers to update internal state and call parent callbacks
     const handleSliderChange = (axis: keyof LocalCoord, value: number | number[]) => {
@@ -271,6 +285,20 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                 }}
             >
                 Centers view on drone but allows manual camera control
+            </Typography>
+            
+            <Typography 
+                variant="caption" 
+                sx={{ 
+                    color: 'rgba(255, 255, 255, 0.4)', 
+                    fontSize: '0.7rem',
+                    fontStyle: 'italic',
+                    textAlign: 'center',
+                    display: 'block',
+                    mt: 2
+                }}
+            >
+                Press ESC to close this panel
             </Typography>
         </PanelContainer>
     );

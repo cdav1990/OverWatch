@@ -1,10 +1,14 @@
 import React, { createContext, useState, useMemo, useContext, ReactNode } from 'react';
 import { createTheme, ThemeProvider as MuiThemeProvider, CssBaseline, PaletteMode } from '@mui/material';
 
+// Define the supported theme types
+type ThemeMode = PaletteMode | 'gecko';
+
 // Define the shape of the context data
 interface ThemeContextType {
-  mode: PaletteMode;
+  mode: ThemeMode;
   toggleTheme: () => void;
+  setThemeMode: (mode: ThemeMode) => void;
 }
 
 // Create the context with a default value (can be undefined initially)
@@ -48,6 +52,27 @@ const darkTheme = createTheme({
   },
 });
 
+// Define the gecko theme (based on dark theme with modifications)
+const geckoTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#52f000', // Green for gecko theme
+    },
+    secondary: {
+      main: '#c6ff00', // Lime secondary
+    },
+    background: {
+      default: '#0e1e0e', // Dark green background
+      paper: '#142514',   
+    },
+    text: {
+      primary: '#e0ffd9',
+      secondary: '#a8d8a8',
+    }
+  },
+});
+
 // Define the props for the provider component
 interface ThemeProviderProps {
   children: ReactNode;
@@ -55,17 +80,34 @@ interface ThemeProviderProps {
 
 // Create the custom provider component
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [mode, setMode] = useState<PaletteMode>('light'); // Default to light mode
+  const [mode, setMode] = useState<ThemeMode>('dark'); // Default to dark mode instead of light
 
   const toggleTheme = () => {
-    setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+    setMode((prevMode) => {
+      // Cycle through themes: light -> dark -> gecko -> light
+      if (prevMode === 'light') return 'dark';
+      if (prevMode === 'dark') return 'gecko';
+      return 'light';
+    });
+  };
+
+  // Function to directly set the theme mode
+  const setThemeMode = (newMode: ThemeMode) => {
+    setMode(newMode);
   };
 
   // Select the theme based on the current mode
-  const theme = useMemo(() => (mode === 'light' ? lightTheme : darkTheme), [mode]);
+  const theme = useMemo(() => {
+    if (mode === 'light') return lightTheme;
+    if (mode === 'dark') return darkTheme;
+    return geckoTheme; // 'gecko' theme
+  }, [mode]);
 
   // Value provided by the context
-  const contextValue = useMemo(() => ({ mode, toggleTheme }), [mode]);
+  const contextValue = useMemo(
+    () => ({ mode, toggleTheme, setThemeMode }), 
+    [mode]
+  );
 
   return (
     <ThemeContext.Provider value={contextValue}>

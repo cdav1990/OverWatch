@@ -23,6 +23,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import CloseIcon from '@mui/icons-material/Close';
 
 import { useMission } from '../../context/MissionContext';
+import { useThreeJSState } from '../../context/ThreeJSStateContext';
 import { Camera, Lens } from '../../types/hardware';
 import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
 import { getCameraById, getLensById, getLensFStops, getCompatibleLenses } from '../../utils/hardwareDatabase';
@@ -172,6 +173,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     onVisualizationSettingsChange
 }) => {
     const { state, dispatch } = useMission();
+    const { forceRerender } = useThreeJSState();
     const { hardware, isCameraFrustumVisible } = state;
 
     // Visualization settings tabs
@@ -370,21 +372,20 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
         dispatch({ type: 'TOGGLE_CAMERA_FRUSTUM_VISIBILITY' });
     };
 
-    // Toggle visibility of visualization elements
-    const handleVisualizationSettingChange = (setting: keyof typeof visualizationSettings) => {
-        setVisualizationSettings(prev => {
-            const newSettings = {
-                ...prev,
-                [setting]: !prev[setting]
-            };
-            
-            // Call the callback if provided
-            if (onVisualizationSettingsChange) {
-                onVisualizationSettingsChange(newSettings);
-            }
-            
-            return newSettings;
-        });
+    // Update the handler for visualization settings
+    const handleVisualizationSettingChange = (setting: keyof typeof visualizationSettings) => (event: React.ChangeEvent<HTMLInputElement>) => {
+        const newSettings = {
+            ...visualizationSettings,
+            [setting]: event.target.checked
+        };
+        
+        setVisualizationSettings(newSettings);
+        
+        if (onVisualizationSettingsChange) {
+            onVisualizationSettingsChange(newSettings);
+            // Force a re-render in Three.js using our shared context
+            forceRerender();
+        }
     };
 
     // Only render if panel is open
@@ -612,7 +613,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     control={
                         <StyledSwitch 
                             checked={visualizationSettings.showNearFocusPlane}
-                            onChange={() => handleVisualizationSettingChange('showNearFocusPlane')}
+                            onChange={handleVisualizationSettingChange('showNearFocusPlane')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }
@@ -625,7 +626,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     control={
                         <StyledSwitch 
                             checked={visualizationSettings.showFarFocusPlane}
-                            onChange={() => handleVisualizationSettingChange('showFarFocusPlane')}
+                            onChange={handleVisualizationSettingChange('showFarFocusPlane')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }
@@ -638,7 +639,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     control={
                         <StyledSwitch 
                             checked={visualizationSettings.showFocusPlaneLabels}
-                            onChange={() => handleVisualizationSettingChange('showFocusPlaneLabels')}
+                            onChange={handleVisualizationSettingChange('showFocusPlaneLabels')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }
@@ -653,7 +654,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     control={
                         <StyledSwitch 
                             checked={visualizationSettings.showFocusPlaneInfo}
-                            onChange={() => handleVisualizationSettingChange('showFocusPlaneInfo')}
+                            onChange={handleVisualizationSettingChange('showFocusPlaneInfo')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }
@@ -666,7 +667,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     control={
                         <StyledSwitch 
                             checked={visualizationSettings.showDOFInfo}
-                            onChange={() => handleVisualizationSettingChange('showDOFInfo')}
+                            onChange={handleVisualizationSettingChange('showDOFInfo')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }
@@ -679,7 +680,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     control={
                         <StyledSwitch 
                             checked={visualizationSettings.showFootprintInfo}
-                            onChange={() => handleVisualizationSettingChange('showFootprintInfo')}
+                            onChange={handleVisualizationSettingChange('showFootprintInfo')}
                             disabled={!isCameraFrustumVisible}
                         />
                     }

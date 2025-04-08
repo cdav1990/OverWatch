@@ -61,6 +61,14 @@ export interface Waypoint {
   holdTime?: number;
   // Actions to perform at this waypoint
   actions?: MissionAction[];
+  // Display options for visualization (optional)
+  displayOptions?: {
+    isGroundProjection?: boolean;
+    projectionOfWaypoint?: string;
+    displayColor?: string;
+    displayStyle?: string;
+    [key: string]: any; // Allow for additional custom properties
+  };
 }
 
 // Actions that can be performed at a waypoint
@@ -99,6 +107,14 @@ export interface PathSegment {
   controlPoints?: LocalCoord[];
   // Speed for the entire segment
   speed?: number;
+  // Ground projection waypoints (visualization only, not part of the actual flight path)
+  groundProjections?: Waypoint[];
+  // Optional display properties for visualization
+  displayOptions?: {
+    enforcePathOrder?: boolean;      // Ensure waypoints are rendered in exact order
+    flightLineOrientation?: 'long_axis' | 'short_axis' | 'custom'; // Hint for renderer
+    [key: string]: any;             // Allow additional custom properties
+  };
 }
 
 // GCP (Ground Control Point)
@@ -118,12 +134,13 @@ export interface GCP {
   size?: number;
 }
 
-// Type definition for common safety parameters (adjust as needed)
+// Type definition for common safety parameters
 export interface SafetyParams {
   rtlAltitude: number; // Return-to-Launch Altitude (meters, likely relative to home/takeoff)
   climbSpeed: number; // Default climb speed (m/s)
   failsafeAction: 'RTL' | 'LAND' | 'HOLD'; // Action on connection loss, etc.
   missionEndAction: 'RTL' | 'LAND' | 'HOLD'; // Action after final waypoint
+  climbToAltitude?: number; // Altitude to climb to before starting mission (meters AGL, optional)
   // Add other relevant parameters like geofence radius, max altitude, etc.
 }
 

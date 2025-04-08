@@ -6,10 +6,13 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
+    Button,
+    ToggleButton,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useMission } from '../../../context/MissionContext';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import RuleFolderIcon from '@mui/icons-material/RuleFolder';
 
 // Import mission generators
 import { 
@@ -38,13 +41,19 @@ interface MissionPlanningStepProps {
 
 // Apply the props interface
 const MissionPlanningStep: React.FC<MissionPlanningStepProps> = ({ isEmbedded = false }) => {
-    const { state } = useMission();
-    const { currentMission } = state;
+    const { state, dispatch } = useMission();
+    const { currentMission, isFaceSelectionModeActive } = state;
     const [expanded, setExpanded] = useState<string | false>(false);
 
     const handleAccordionChange = (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
         setExpanded(isExpanded ? panel : false);
     };
+
+    // --- Handler for Face Selection Toggle --- 
+    const handleToggleFaceSelection = () => {
+        dispatch({ type: 'TOGGLE_FACE_SELECTION_MODE', payload: !isFaceSelectionModeActive });
+    };
+    // --- End Handler --- 
 
     // If embedded, just return the first generator. Otherwise, wrap in Box/Paper with accordions.
     if (isEmbedded) {
@@ -85,6 +94,24 @@ const MissionPlanningStep: React.FC<MissionPlanningStepProps> = ({ isEmbedded = 
                         <Typography variant="subtitle1">2D Mission</Typography>
                     </AccordionSummary>
                     <AccordionDetails>
+                        <ToggleButton
+                            value="face-select"
+                            selected={isFaceSelectionModeActive}
+                            onChange={handleToggleFaceSelection}
+                            size="small"
+                            sx={{ 
+                                mb: 2,
+                                textTransform: 'none',
+                                color: isFaceSelectionModeActive ? '#4fc3f7' : 'inherit',
+                                borderColor: isFaceSelectionModeActive ? '#4fc3f7' : 'inherit',
+                                '&.Mui-selected': {
+                                    backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                                }
+                            }}
+                        >
+                            <RuleFolderIcon sx={{ mr: 1, fontSize: '1.1rem' }} />
+                            Select Area Face
+                        </ToggleButton>
                         <Mission2DGenerator />
                     </AccordionDetails>
                 </Accordion>
@@ -102,6 +129,24 @@ const MissionPlanningStep: React.FC<MissionPlanningStepProps> = ({ isEmbedded = 
                         <Typography variant="subtitle1">3D Mission</Typography>
                     </AccordionSummary>
                     <AccordionDetails>
+                        <ToggleButton
+                            value="face-select"
+                            selected={isFaceSelectionModeActive}
+                            onChange={handleToggleFaceSelection}
+                            size="small"
+                            sx={{ 
+                                mb: 2,
+                                textTransform: 'none',
+                                color: isFaceSelectionModeActive ? '#4fc3f7' : 'inherit',
+                                borderColor: isFaceSelectionModeActive ? '#4fc3f7' : 'inherit',
+                                '&.Mui-selected': {
+                                    backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                                }
+                            }}
+                        >
+                            <RuleFolderIcon sx={{ mr: 1, fontSize: '1.1rem' }} />
+                            Select Area Face
+                        </ToggleButton>
                         <Mission3DGenerator />
                     </AccordionDetails>
                 </Accordion>

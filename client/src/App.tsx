@@ -1,15 +1,34 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
-import { Box } from '@mui/material';
-import { ThemeProvider } from './context/ThemeContext/ThemeContext';
+import { Box, CircularProgress } from '@mui/material';
+import { ThemeProvider } from "./context/ThemeContext";
 import { MissionProvider } from './context/MissionContext';
 import { AppProvider, useAppContext } from './context/AppContext';
-import AppLayout from './layouts/AppLayout/AppLayout';
-import MissionPlanningLayout from './layouts/MissionPlanningLayout/MissionPlanningLayout';
-import Dashboard from './pages/Dashboard/Dashboard';
-import GeoPage from './pages/GeoPage/GeoPage';
+import { ThreeJSStateProvider } from './context/ThreeJSStateContext';
 import LaunchScreen from './components/LaunchScreen/LaunchScreen';
 import './App.css';
+
+// Lazy-loaded components
+const AppLayout = lazy(() => import('./layouts/AppLayout/AppLayout'));
+const MissionPlanningLayout = lazy(() => import('./layouts/MissionPlanningLayout/MissionPlanningLayout'));
+const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
+const GeoPage = lazy(() => import('./pages/GeoPage/GeoPage'));
+
+// Loading fallback component for Suspense
+const LoadingFallback = () => (
+  <Box 
+    sx={{ 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      height: '100%', 
+      width: '100%',
+      backgroundColor: '#0c1419',
+    }}
+  >
+    <CircularProgress color="info" />
+  </Box>
+);
 
 // Title updater component that runs on route changes
 const TitleUpdater = () => {
@@ -50,16 +69,30 @@ const MainApp: React.FC = () => {
   }
 
   return (
-    <AppLayout>
-      <TitleUpdater />
-      <Box component="main" sx={{ flexGrow: 1, width: '100%', height: 'calc(100vh - 64px)', overflow: 'auto' }}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/mission/*" element={<MissionPlanningLayout />} />
-          <Route path="/geo" element={<GeoPage />} />
-        </Routes>
-      </Box>
-    </AppLayout>
+    <Suspense fallback={<LoadingFallback />}>
+      <AppLayout>
+        <TitleUpdater />
+        <Box component="main" sx={{ flexGrow: 1, width: '100%', height: 'calc(100vh - 64px)', overflow: 'auto' }}>
+          <Routes>
+            <Route path="/" element={
+              <Suspense fallback={<LoadingFallback />}>
+                <Dashboard />
+              </Suspense>
+            } />
+            <Route path="/mission/*" element={
+              <Suspense fallback={<LoadingFallback />}>
+                <MissionPlanningLayout />
+              </Suspense>
+            } />
+            <Route path="/geo" element={
+              <Suspense fallback={<LoadingFallback />}>
+                <GeoPage />
+              </Suspense>
+            } />
+          </Routes>
+        </Box>
+      </AppLayout>
+    </Suspense>
   );
 };
 
@@ -67,11 +100,13 @@ function App() {
   return (
     <ThemeProvider>
       <AppProvider>
-        <MissionProvider>
-          <Router>
-            <MainApp />
-          </Router>
-        </MissionProvider>
+        <ThreeJSStateProvider>
+          <MissionProvider>
+            <Router>
+              <MainApp />
+            </Router>
+          </MissionProvider>
+        </ThreeJSStateProvider>
       </AppProvider>
     </ThemeProvider>
   );

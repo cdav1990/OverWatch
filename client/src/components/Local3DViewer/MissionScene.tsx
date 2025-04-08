@@ -1,9 +1,9 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Sky, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useMission } from '../../context/MissionContext';
-import { LocalCoord } from '../../types/mission';
+import { LocalCoord, Waypoint, PathSegment, PathType } from '../../types/mission';
 import { useSpring, animated } from '@react-spring/three';
 import WaypointMarker from './markers/WaypointMarker';
 import PathLine from './markers/PathLine';
@@ -12,8 +12,10 @@ import SceneObjectRenderer from './objects/SceneObjectRenderer';
 import HighlightFaceIndicator from './indicators/HighlightFaceIndicator';
 import DroneModel from './drone/DroneModel';
 import { CameraFrustumProps } from './drone/CameraFrustum';
-import { mapLocalCoordsToThree } from './utils/threeHelpers';
+import { mapLocalCoordsToThree, threeToLocalCoord } from './utils/threeHelpers';
 import MissionAreaIndicator from './indicators/MissionAreaIndicator';
+import { BufferGeometry, Float32BufferAttribute } from 'three';
+import ObjectTransformControls from './controls/ObjectTransformControls';
 
 // Add constants for drag smoothing
 const DRAG_SMOOTHING_FACTOR = 0.25; // Lower = smoother/slower, higher = more responsive
@@ -42,6 +44,59 @@ const SceneSetup: React.FC = () => {
   return null;
 };
 
+// --- Component for Offset Face Visualization ---
+const SelectedFaceVisualizer: React.FC = () => {
+    const { state } = useMission();
+    const { selectedFace } = state;
+
+    const offsetFaceGeometry = useMemo(() => {
+        if (!selectedFace) return null;
+
+        const offsetDistance = 0.1; // Offset distance in meters
+        
+        // Reconstruct THREE.Vector3 objects from state data
+        const normal = new THREE.Vector3(selectedFace.normal.x, selectedFace.normal.y, selectedFace.normal.z);
+        const vA = new THREE.Vector3(selectedFace.vertices[0].x, selectedFace.vertices[0].y, selectedFace.vertices[0].z);
+        const vB = new THREE.Vector3(selectedFace.vertices[1].x, selectedFace.vertices[1].y, selectedFace.vertices[1].z);
+        const vC = new THREE.Vector3(selectedFace.vertices[2].x, selectedFace.vertices[2].y, selectedFace.vertices[2].z);
+        
+        // Calculate offset vertices
+        const vA_off = vA.clone().addScaledVector(normal, offsetDistance);
+        const vB_off = vB.clone().addScaledVector(normal, offsetDistance);
+        const vC_off = vC.clone().addScaledVector(normal, offsetDistance);
+        
+        // Create geometry data
+        const vertices = new Float32Array([
+            vA_off.x, vA_off.y, vA_off.z,
+            vB_off.x, vB_off.y, vB_off.z,
+            vC_off.x, vC_off.y, vC_off.z,
+        ]);
+        
+        const geometry = new BufferGeometry();
+        geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+        geometry.computeVertexNormals(); // Compute normals for lighting
+        
+        return geometry;
+
+    }, [selectedFace]);
+
+    if (!offsetFaceGeometry) {
+        return null;
+    }
+
+    return (
+        <mesh geometry={offsetFaceGeometry}>
+            <meshStandardMaterial 
+                color="#ff0000" // Red color
+                transparent 
+                opacity={0.6} 
+                side={THREE.DoubleSide} // Render both sides
+                depthWrite={false} // Prevent interference with other transparent objects
+            />
+        </mesh>
+    );
+};
+
 // Main scene component - Now accepts live props
 const MissionScene: React.FC<MissionSceneProps> = ({
   liveDronePosition,
@@ -58,7 +113,16 @@ const MissionScene: React.FC<MissionSceneProps> = ({
   // Destructure state properly
   const { 
     currentMission, drawingMode, isSelectingTakeoffPoint, 
-    isDroneVisible, missionAreas, selectedFace 
+    isDroneVisible, missionAreas, selectedFace,
+    selectedPathSegmentIds,
+    selectedPathSegment,
+    selectedWaypoint,
+    hiddenGcpIds,
+    isSimulating,
+    simulationSpeed,
+    sceneObjects,
+    isFaceSelectionModeActive,
+    transformObjectId
   } = state;
 
   // State for drone simulation (only used when isSimulating is true)
@@ -99,8 +163,13 @@ const MissionScene: React.FC<MissionSceneProps> = ({
   
   // Clear selected face when clicking on empty space
   const handleBackgroundClick = (event: ThreeEvent<MouseEvent>) => {
-    if (event.object === groundMeshRef.current) {
-      dispatch({ type: 'SET_SELECTED_FACE', payload: null });
+    // If clicking background while trying to select a face, turn off selection mode
+    if (isFaceSelectionModeActive) {
+        dispatch({ type: 'TOGGLE_FACE_SELECTION_MODE', payload: false });
+    }
+    // Always clear the selection visualization if clicking background
+    if (selectedFace) {
+       dispatch({ type: 'SET_SELECTED_FACE', payload: null });
     }
   };
 
@@ -234,22 +303,29 @@ const MissionScene: React.FC<MissionSceneProps> = ({
   }, [state.polygonPoints, state.polygonPreviewPoint, currentMission]);
 
   // Handle waypoint selection
-  const handleWaypointClick = (waypoint: any) => {
+  const handleWaypointClick = (waypoint: Waypoint) => {
     dispatch({ type: 'SELECT_WAYPOINT', payload: waypoint });
   };
 
   // Handle path segment selection
-  const handleSegmentClick = (segment: any) => {
+  const handleSegmentClick = (segment: PathSegment) => {
     dispatch({ type: 'SELECT_PATH_SEGMENT', payload: segment });
   };
 
   // Determine the currently displayed drone position
   const activeDronePosition = useMemo(() => {
     if (manualDronePosition) return manualDronePosition;
+    if (state.isLive && liveDronePosition) return liveDronePosition;
+    if (state.isSimulating) return simDronePosition;
     if (currentMission?.takeoffPoint) return currentMission.takeoffPoint;
-    if (simDronePosition) return simDronePosition;
-    return null;
-  }, [manualDronePosition, currentMission?.takeoffPoint, simDronePosition]);
+    return { x: 0, y: 0, z: 0 };
+  }, [manualDronePosition, state.isLive, liveDronePosition, state.isSimulating, simDronePosition, currentMission?.takeoffPoint]);
+
+  const activeDroneRotation = useMemo(() => {
+    if (state.isLive && liveDroneRotation) return liveDroneRotation;
+    if (state.isSimulating) return simDroneRotation;
+    return { heading: 0, pitch: 0, roll: 0 }; 
+  }, [state.isLive, liveDroneRotation, state.isSimulating, simDroneRotation]);
 
   // Effect to calculate/clear offset and reset target when follow state changes
   useEffect(() => {
@@ -283,12 +359,15 @@ const MissionScene: React.FC<MissionSceneProps> = ({
 
   // New handler for interactions with scene objects
   const handleObjectInteraction = (objectId: string, objectType: 'sceneObject' | 'gcp', isShiftPressed: boolean, event: ThreeEvent<MouseEvent>) => {
-    if (isShiftPressed) {
-      // Handle dragging/transforming
-      setInteractingObjectInfo({ id: objectId, type: objectType, mode: 'drag' });
-    } else {
-      // Open edit modal
-      dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: objectId });
+    console.log(`Interaction with ${objectType} ${objectId}`);
+    
+    // Handle different types of interactions based on object type
+    if (objectType === 'sceneObject') {
+      // Just log for now, keep it simple - actual selection handled in the renderer
+      console.log("Scene object clicked:", objectId);
+    } else if (objectType === 'gcp') {
+      // Add GCP selection logic here if needed
+      console.log("GCP clicked:", objectId);
     }
   };
 
@@ -331,78 +410,287 @@ const MissionScene: React.FC<MissionSceneProps> = ({
     });
   }, [currentMission, missionAreas]);
 
+  // --- Filtered Path Segments for Rendering ---
+  const visiblePathSegments = useMemo(() => {
+    if (!currentMission) return [];
+    return currentMission.pathSegments.filter(seg => selectedPathSegmentIds.includes(seg.id));
+  }, [currentMission, selectedPathSegmentIds]);
+  // --- End Filtered Segments ---
+
+  // --- Simulation State --- 
+  const [simulationWaypoints, setSimulationWaypoints] = useState<LocalCoord[]>([]); 
+  const [simTargetWpIndex, setSimTargetWpIndex] = useState<number>(0); 
+  const [simLegProgress, setSimLegProgress] = useState<number>(0); 
+  const [simCurrentSegmentId, setSimCurrentSegmentId] = useState<string | null>(null);
+
+  // --- Combined Waypoint List for Simulation ---
+  // Generates the sequence: Takeoff Point -> Waypoints of Segment 1 -> Waypoints of Segment 2 -> ...
+  const combinedSimulationPath = useMemo(() => {
+    if (!currentMission || !currentMission.takeoffPoint || selectedPathSegmentIds.length === 0) {
+      return [];
+    }
+    
+    const waypoints: { coord: LocalCoord; segmentId: string | null }[] = [
+        { coord: currentMission.takeoffPoint, segmentId: null } // Start at takeoff point (null segmentId)
+    ];
+
+    // Add waypoints from selected segments in their original order
+    currentMission.pathSegments.forEach(segment => {
+        if (selectedPathSegmentIds.includes(segment.id)) {
+            segment.waypoints.forEach(wp => {
+                if (wp.local) {
+                    waypoints.push({ coord: wp.local, segmentId: segment.id });
+                }
+            });
+        }
+    });
+    
+    // Potentially add RTL point or landing logic here later
+    
+    return waypoints;
+  }, [currentMission, selectedPathSegmentIds]);
+
+  // --- Simulation Setup Effect --- 
+  // Resets simulation state when simulation starts/stops or path changes
+  useEffect(() => {
+    if (isSimulating && combinedSimulationPath.length > 0) {
+      // Simulation is starting or path changed while simulating
+      console.log("Setting up simulation...");
+      const startPoint = combinedSimulationPath[0].coord;
+      setSimDronePosition(startPoint);
+      setSimTargetWpIndex(1); // Start moving towards the first waypoint after takeoff
+      setSimLegProgress(0);
+      setSimulationWaypoints(combinedSimulationPath.map(p => p.coord)); // Store just the coords
+      setSimCurrentSegmentId(combinedSimulationPath[1]?.segmentId ?? null); // Segment ID of the first *leg*
+      
+       // Set initial rotation based on first leg direction (takeoff to first waypoint)
+       if (combinedSimulationPath.length > 1) {
+           const p1 = combinedSimulationPath[0].coord;
+           const p2 = combinedSimulationPath[1].coord;
+           const heading = (Math.atan2(p2.x - p1.x, p2.y - p1.y) * (180 / Math.PI) + 360) % 360;
+           setSimDroneRotation({ heading, pitch: 0, roll: 0 });
+       } else {
+           setSimDroneRotation({ heading: 0, pitch: 0, roll: 0 }); // Default if only takeoff point
+       }
+       
+       // Dispatch initial progress
+       dispatch({ 
+           type: 'SET_SIMULATION_PROGRESS', 
+           payload: { 
+               segmentId: simCurrentSegmentId, 
+               waypointIndex: 0, // At the start point
+               totalWaypoints: combinedSimulationPath.length // Total points including takeoff
+           } 
+       });
+
+    } else if (!isSimulating) {
+      // Simulation stopped, reset progress potentially
+      console.log("Simulation stopped or no path.");
+      setSimTargetWpIndex(0);
+      setSimLegProgress(0);
+      setSimulationWaypoints([]);
+      // Keep simDronePosition where it stopped? Or reset to takeoff? Resetting for now.
+      setSimDronePosition(currentMission?.takeoffPoint || { x: 0, y: 0, z: 0 }); 
+      setSimDroneRotation({ heading: 0, pitch: 0, roll: 0 });
+      setSimCurrentSegmentId(null);
+      // Clear progress in context
+      dispatch({ 
+          type: 'SET_SIMULATION_PROGRESS', 
+          payload: { segmentId: null, waypointIndex: 0, totalWaypoints: 0 } 
+      });
+    }
+  }, [isSimulating, combinedSimulationPath, currentMission?.takeoffPoint, dispatch]); // Rerun when simulation state or path changes
+  
+  // --- Simulation Loop --- 
+  useFrame((_, delta) => {
+    if (!isSimulating || simulationWaypoints.length < 2 || simTargetWpIndex >= simulationWaypoints.length) {
+      // Not simulating, path too short, or finished
+      if (isSimulating && simTargetWpIndex >= simulationWaypoints.length && simulationWaypoints.length > 0) {
+           // If finished, stop simulation
+           console.log("Simulation path finished.");
+           dispatch({ type: 'STOP_SIMULATION' });
+      }
+      return; 
+    }
+    
+    // Get current position, target position, and the segment ID for this leg
+    const currentPos = simulationWaypoints[simTargetWpIndex - 1];
+    const targetPos = simulationWaypoints[simTargetWpIndex];
+    const legSegmentId = combinedSimulationPath[simTargetWpIndex]?.segmentId ?? simCurrentSegmentId; // Get segment ID for this leg
+    
+    // Calculate vector and distance for the current leg
+    const dx = targetPos.x - currentPos.x;
+    const dy = targetPos.y - currentPos.y;
+    const dz = targetPos.z - currentPos.z;
+    const legDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    
+    if (legDistance < 0.01) { // Avoid division by zero if waypoints are identical
+        // Move instantly to the next waypoint
+        setSimLegProgress(1);
+    } else {
+        // Get speed for this segment (use default mission speed for now)
+        // TODO: Enhance to use segment-specific speed if available
+        const speed = currentMission?.defaultSpeed || 5; // m/s
+        const effectiveSpeed = speed * simulationSpeed; // Apply timeline speed multiplier
+        
+        // Calculate distance to move this frame
+        const moveDistance = effectiveSpeed * delta; // distance = speed * time
+        
+        // Calculate progress increment for this frame
+        const progressIncrement = moveDistance / legDistance;
+        
+        // Update leg progress
+        setSimLegProgress(prev => Math.min(1, prev + progressIncrement));
+    }
+    
+    // Calculate new interpolated position based on progress
+    const newX = currentPos.x + dx * simLegProgress;
+    const newY = currentPos.y + dy * simLegProgress;
+    const newZ = currentPos.z + dz * simLegProgress;
+    setSimDronePosition({ x: newX, y: newY, z: newZ });
+    
+    // Calculate heading (only update if moving)
+    if (legDistance > 0.01) {
+        const heading = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360; // Use dx, dy for heading in XY plane
+        setSimDroneRotation(prev => ({ ...prev, heading }));
+    }
+    
+    // Update progress in context (report based on TARGET index)
+    dispatch({ 
+        type: 'SET_SIMULATION_PROGRESS', 
+        payload: { 
+            segmentId: legSegmentId, // Report the segment this leg belongs to
+            waypointIndex: simTargetWpIndex, // Report the index we are heading towards
+            totalWaypoints: simulationWaypoints.length 
+        } 
+    });
+
+    // Check if leg is completed
+    if (simLegProgress >= 1) {
+        // Move to the next leg
+        const nextTargetIndex = simTargetWpIndex + 1;
+        if (nextTargetIndex < simulationWaypoints.length) {
+            setSimTargetWpIndex(nextTargetIndex);
+            setSimLegProgress(0); // Reset progress for the new leg
+            // Update the current segment ID for the *next* leg
+            setSimCurrentSegmentId(combinedSimulationPath[nextTargetIndex]?.segmentId ?? null);
+        } else {
+            // Reached the end of the last waypoint
+            setSimTargetWpIndex(nextTargetIndex); // Set index beyond bounds to stop in the next frame
+            console.log("Reached end of simulation path.");
+            // Optionally dispatch STOP_SIMULATION here or let the next frame handle it
+        }
+    }
+  });
+  // --- End Simulation --- 
+  
+  // Add a handler to exit transform mode
+  const handleExitTransformMode = () => {
+    dispatch({ type: 'SET_TRANSFORM_OBJECT_ID', payload: null });
+  };
+
+  // Ensure the component returns JSX
   return (
     <>
       <SceneSetup />
 
       {/* Sky and lighting */}
-      <Sky sunPosition={[100, 100, 20]} />
+      {state.sceneSettings.skyEnabled && <Sky sunPosition={new THREE.Vector3(...state.sceneSettings.sunPosition)} />}
       <ambientLight intensity={state.sceneSettings.ambientLightIntensity} />
       <directionalLight
-        position={[10, 30, 10]}
+        position={state.sceneSettings.sunPosition}
         intensity={state.sceneSettings.directionalLightIntensity}
         castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-far={150}
+        shadow-camera-left={-100}
+        shadow-camera-right={100}
+        shadow-camera-top={100}
+        shadow-camera-bottom={-100}
       />
 
       {/* Ground plane and grid */}
       <Grid
-        args={[300, state.sceneSettings.gridDivisions]}
-        position={[0, 0, 0]}
+        position={[0, -0.01, 0]}
+        visible={state.sceneSettings.gridVisible}
+        args={[state.sceneSettings.gridSize, state.sceneSettings.gridSize]}
+        cellSize={state.sceneSettings.gridUnit === 'feet' ? 3.28084 : 1}
+        cellThickness={1}
         cellColor={state.sceneSettings.gridColorGrid}
-        sectionSize={50}
-        sectionThickness={1}
+        sectionSize={state.sceneSettings.gridUnit === 'feet' ? 32.8084 : 10}
+        sectionThickness={1.5}
         sectionColor={state.sceneSettings.gridColorCenterLine}
-        infiniteGrid
-        fadeDistance={600}
+        fadeDistance={state.sceneSettings.gridFadeDistance}
         fadeStrength={1}
+        infiniteGrid
       />
 
       {/* Invisible ground plane for interactions */}
       <mesh
         ref={groundMeshRef}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.01, 0]} 
+        position={[0, 0, 0]}
+        onClick={handleBackgroundClick}
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerDown}
-        onClick={handleBackgroundClick}
+        receiveShadow
       >
-        <planeGeometry args={[1000, 1000]} />
-        <meshBasicMaterial visible={false} />
+        <planeGeometry args={[10000, 10000]} />
+        <shadowMaterial opacity={0.3} />
       </mesh>
 
       {/* Render Scene Objects */}
-      {state.sceneObjects.map((sceneObject) => (
+      {sceneObjects.map(obj => (
         <SceneObjectRenderer
-          key={sceneObject.id}
-          sceneObject={sceneObject}
+          key={obj.id}
+          sceneObject={obj}
+          isSelected={obj.id === selectedFace?.objectId}
+          selectedFaceIndex={selectedFace?.objectId === obj.id ? selectedFace.faceIndex : undefined}
           onInteraction={handleObjectInteraction}
-          onFaceSelect={handleFaceSelect}
           onPointerOver={handlePointerOver}
           onPointerOut={handlePointerOut}
         />
       ))}
 
       {/* Render Mission Elements */}
-      {currentMission?.pathSegments?.map((segment) => (
-        <PathLine
-          key={segment.id}
-          segment={segment}
-          selected={state.selectedPathSegment?.id === segment.id}
-          onClick={() => handleSegmentClick(segment)}
-        />
-      ))}
-
-      {currentMission?.pathSegments?.flatMap(segment => segment.waypoints).map((waypoint) => (
-        <WaypointMarker
-          key={waypoint.id}
-          waypoint={waypoint}
-          selected={state.selectedWaypoint?.id === waypoint.id}
-          onClick={() => handleWaypointClick(waypoint)}
-        />
+      {visiblePathSegments.map(segment => (
+        <React.Fragment key={segment.id}>
+          {/* Render Path Line */}
+          {segment.waypoints.length > 1 && (
+            <PathLine
+              segment={segment}
+              selected={segment.id === selectedPathSegment?.id}
+              onClick={() => { handleSegmentClick(segment); }}
+            />
+          )}
+          {/* Render Waypoints */}
+          {segment.waypoints.map((wp) => (
+            wp.local && (
+              <WaypointMarker
+                key={wp.id}
+                waypoint={wp}
+                selected={wp.id === selectedWaypoint?.id}
+                onClick={() => { handleWaypointClick(wp); }}
+              />
+            )
+          ))}
+          {/* Render Ground Projections (if available) */}
+          {segment.groundProjections && segment.groundProjections.map((wp) => (
+            wp.local && (
+              <WaypointMarker
+                key={wp.id}
+                waypoint={wp}
+                selected={false} // Ground projections are never selected
+                onClick={() => { handleSegmentClick(segment); }} // Clicking ground projection selects the segment
+              />
+            )
+          ))}
+        </React.Fragment>
       ))}
 
       {/* Render GCPs */}
-      {currentMission?.gcps?.map((gcp) => (
+      {currentMission?.gcps?.filter(gcp => !hiddenGcpIds.includes(gcp.id)).map((gcp) => (
         <GCPMarker
           key={gcp.id}
           gcp={gcp}
@@ -414,17 +702,17 @@ const MissionScene: React.FC<MissionSceneProps> = ({
       {selectedFace && <HighlightFaceIndicator faceInfo={selectedFace} />}
       
       {/* Render Mission Areas - Convert missionAreas to array if we get undefined */}
-      {(Array.isArray(missionAreas) ? missionAreas : []).map(area => (
+      {(Array.isArray(missionAreas) ? missionAreas : []).map((area) => (
         <MissionAreaIndicator key={area.id} missionArea={area} />
       ))}
 
       {/* Render Drone */}
-      {isDroneVisible && activeDronePosition && (
+      {isDroneVisible && (
         <DroneModel
           position={activeDronePosition}
-          heading={liveDroneRotation?.heading || simDroneRotation.heading || 0}
-          pitch={liveDroneRotation?.pitch || simDroneRotation.pitch || 0}
-          roll={liveDroneRotation?.roll || simDroneRotation.roll || 0}
+          heading={activeDroneRotation.heading}
+          pitch={activeDroneRotation.pitch}
+          roll={activeDroneRotation.roll}
           onDoubleClick={onDroneDoubleClick}
           visualizationSettings={visualizationSettings}
         />
@@ -433,13 +721,21 @@ const MissionScene: React.FC<MissionSceneProps> = ({
       {/* Camera controls */}
       <OrbitControls
         ref={controlsRef}
+        enableDamping={false}
         makeDefault
-        enabled={drawingMode === null && !isSelectingTakeoffPoint && interactingObjectInfo === null}
-        maxDistance={500}
-        minDistance={5}
-        enableDamping={true}
-        dampingFactor={0.1}
       />
+
+      {/* --- Render Selected Face Visualization --- */}
+      <SelectedFaceVisualizer />
+      {/* --- End Selected Face Visualization --- */}
+
+      {/* Add ObjectTransformControls */}
+      {transformObjectId && (
+        <ObjectTransformControls 
+          objectId={transformObjectId}
+          onComplete={handleExitTransformMode}
+        />
+      )}
     </>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Outlet } from 'react-router-dom'; // Keep Outlet for potential future nested views if needed, but not used for steps now
 import {
     Box,
@@ -31,44 +31,89 @@ import {
     Select,
     MenuItem,
     FormControl,
-    InputLabel
+    InputLabel,
+    FormGroup,
+    CircularProgress,
+    Checkbox
 } from '@mui/material';
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff'; // Icon for Pre-checks
 import RouteIcon from '@mui/icons-material/Route'; // Icon for Raster Pattern/Controls
 import CategoryIcon from '@mui/icons-material/Category'; // Icon for Build Scene (Example)
-import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'; // Simulation icon placeholder
-import SensorsIcon from '@mui/icons-material/Sensors'; // Live icon placeholder
-import SettingsIcon from '@mui/icons-material/Settings'; // Import Settings icon
-import AddLocationIcon from '@mui/icons-material/AddLocation';
-import PolylineIcon from '@mui/icons-material/Polyline';
-import GridOnIcon from '@mui/icons-material/GridOn';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import PauseIcon from '@mui/icons-material/Pause';
-import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import PublishIcon from '@mui/icons-material/Publish';
-import SaveIcon from '@mui/icons-material/Save';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddIcon from '@mui/icons-material/Add';
-import EditLocationIcon from '@mui/icons-material/EditLocation';
-import CameraIcon from '@mui/icons-material/Camera'; // Import an icon for Hardware
-import HardwareSelectionModal from '../../components/HardwareSelection/HardwareSelectionModal'; // Import placeholder
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; // <-- Add icon for Accordion
-import SceneSettingsPanel from '../../components/SceneControls/SceneSettingsPanel'; // Revert to the original import path based on error context
-import TimelineControls from '../../components/TimelineControls/TimelineControls'; // <-- Import TimelineControls
-import Local3DViewer from '../../components/Local3DViewer';
-import AssetTree from '../../components/AssetTree/AssetTree';
-import BuildSceneStep from '../../pages/MissionPage/Steps/BuildSceneStep';
+import { keyframes } from '@mui/system'; // Import keyframes
 
-// Context and Step Components
+// Import context and basic utilities
 import { useMission } from '../../context/MissionContext';
-import MissionPreChecksStep from '../../pages/MissionPage/Steps/MissionPreChecksStep';
-import MissionPlanningStep from '../../pages/MissionPage/Steps/MissionPlanningStep';
-import { PathType } from '../../types/mission'; // <-- Import PathType
-import { useThemeContext } from '../../context/ThemeContext/ThemeContext'; // Import theme context hook
-import { SceneSettings, HardwareState } from '../../context/MissionContext'; // Import types
-import { SelectChangeEvent } from '@mui/material/Select'; // <-- Add SelectChangeEvent
-import { cameras, lenses, droneModels, getCameraById, getLensById, getDroneModelById, getCompatibleLenses, getLensFStops } from '../../utils/hardwareDatabase'; // <-- Import hardware data & getLensFStops
-import { feetToMeters, metersToFeet } from '../../utils/sensorCalculations'; // <-- Import conversions
+import { metersToFeet } from '../../utils/sensorCalculations';
+import { PathType } from '../../types/mission';
+import { useThemeContext } from '../../context/ThemeContext';
+import { SceneSettings, HardwareState } from '../../context/MissionContext';
+import { SelectChangeEvent } from '@mui/material/Select';
+import { feetToMeters } from '../../utils/sensorCalculations';
+
+// Lazy-loaded components (heavier components)
+const PlayCircleOutlineIcon = lazy(() => import('@mui/icons-material/PlayCircleOutline'));
+const SensorsIcon = lazy(() => import('@mui/icons-material/Sensors'));
+const SettingsIcon = lazy(() => import('@mui/icons-material/Settings'));
+const AddLocationIcon = lazy(() => import('@mui/icons-material/AddLocation'));
+const PolylineIcon = lazy(() => import('@mui/icons-material/Polyline'));
+const GridOnIcon = lazy(() => import('@mui/icons-material/GridOn'));
+const PlayArrowIcon = lazy(() => import('@mui/icons-material/PlayArrow'));
+const PauseIcon = lazy(() => import('@mui/icons-material/Pause'));
+const RestartAltIcon = lazy(() => import('@mui/icons-material/RestartAlt'));
+const PublishIcon = lazy(() => import('@mui/icons-material/Publish'));
+const SaveIcon = lazy(() => import('@mui/icons-material/Save'));
+const DeleteIcon = lazy(() => import('@mui/icons-material/Delete'));
+const AddIcon = lazy(() => import('@mui/icons-material/Add'));
+const EditLocationIcon = lazy(() => import('@mui/icons-material/EditLocation'));
+const CameraIcon = lazy(() => import('@mui/icons-material/Camera'));
+const CameraAltIcon = lazy(() => import('@mui/icons-material/CameraAlt'));
+const TimerIcon = lazy(() => import('@mui/icons-material/Timer'));
+const StraightenIcon = lazy(() => import('@mui/icons-material/Straighten'));
+
+// Lazy-loaded component imports for heavy components
+const HardwareSelectionModal = lazy(() => import('../../components/HardwareSelection/HardwareSelectionModal'));
+const SceneSettingsPanel = lazy(() => import('../../components/SceneControls/SceneSettingsPanel'));
+const TimelineControls = lazy(() => import('../../components/TimelineControls/TimelineControls'));
+const Local3DViewer = lazy(() => import('../../components/Local3DViewer'));
+const AssetTree = lazy(() => import('../../components/AssetTree/AssetTree'));
+const BuildSceneStep = lazy(() => import('../../pages/MissionPage/Steps/BuildSceneStep'));
+const MissionPreChecksStep = lazy(() => import('../../pages/MissionPage/Steps/MissionPreChecksStep'));
+const MissionPlanningStep = lazy(() => import('../../pages/MissionPage/Steps/MissionPlanningStep'));
+
+// Lazy-load utility functions that are more complex
+const { 
+  calculateSegmentDistance, 
+  countPhotosInSegment, 
+  calculateSegmentTime, 
+  formatTimeMMSS 
+} = await import('../../utils/pathUtils');
+
+// Lazy-load hardware database
+const { 
+  cameras, 
+  lenses, 
+  droneModels, 
+  getCameraById, 
+  getLensById, 
+  getDroneModelById, 
+  getCompatibleLenses, 
+  getLensFStops 
+} = await import('../../utils/hardwareDatabase');
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <Box display="flex" justifyContent="center" alignItems="center" p={2}>
+    <CircularProgress color="info" size={30} />
+  </Box>
+);
+
+// Icon loading fallback (smaller)
+const IconFallback = () => (
+  <Box width={24} height={24} display="flex" justifyContent="center" alignItems="center">
+    <CircularProgress color="inherit" size={16} />
+  </Box>
+);
 
 const leftPaneWidth = 450; // Keep defined width
 const bottomPanelHeight = '350px'; // INCREASED height by 100px
@@ -77,9 +122,28 @@ const bottomPanelHeight = '350px'; // INCREASED height by 100px
 const SHUTTER_SPEED_OPTIONS = [ "1/8000", "1/4000", "1/2000", "1/1000", "1/500", "1/250", "1/125", "1/60", "1/30", "1/15", "1/8", "1/4", "1/2", "1" ];
 const ISO_OPTIONS = [ 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800 ];
 
+// Define constants for button values
+const SIMULATE_MODE = 'simulation';
+const LIVE_MODE = 'live';
+
+// Define the flashing animation
+const flashAnimation = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; } /* Adjust opacity for desired flash intensity */
+`;
+
 const MissionPlanningLayout: React.FC = () => {
     const { state: missionState, dispatch: missionDispatch } = useMission();
-    const { activeControlPane, isSimulating, sceneSettings, currentMission } = missionState;
+    const { 
+        activeControlPane, 
+        isSimulating, 
+        sceneSettings, 
+        missions, // Get the list of all missions
+        currentMission, // Get the currently active mission
+        isLive, 
+        hardware,
+        selectedPathSegmentIds // Get selected segment IDs
+    } = missionState;
     const { mode, setThemeMode } = useThemeContext();
     const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(false);
     const [activeTabIndex, setActiveTabIndex] = useState(0);
@@ -167,11 +231,51 @@ const MissionPlanningLayout: React.FC = () => {
     
     // Define actions for the speed dial
     const speedDialActions = [
-        { icon: <AddLocationIcon />, name: 'Add Waypoint', onClick: addWaypoint },
-        { icon: <RouteIcon />, name: 'Path: Straight', onClick: () => addPathSegment(PathType.STRAIGHT) },
-        { icon: <PolylineIcon />, name: 'Path: Bezier', onClick: () => addPathSegment(PathType.BEZIER) },
-        { icon: <GridOnIcon />, name: 'Path: Grid', onClick: () => addPathSegment(PathType.GRID) },
-        { icon: <EditLocationIcon />, name: 'Draw Polygon Area', onClick: startPolygonDrawing },
+        { 
+            icon: (
+                <Suspense fallback={<IconFallback />}>
+                    <AddLocationIcon />
+                </Suspense>
+            ), 
+            name: 'Add Waypoint', 
+            onClick: addWaypoint 
+        },
+        { 
+            icon: (
+                <Suspense fallback={<IconFallback />}>
+                    <RouteIcon />
+                </Suspense>
+            ), 
+            name: 'Path: Straight', 
+            onClick: () => addPathSegment(PathType.STRAIGHT) 
+        },
+        { 
+            icon: (
+                <Suspense fallback={<IconFallback />}>
+                    <PolylineIcon />
+                </Suspense>
+            ), 
+            name: 'Path: Bezier', 
+            onClick: () => addPathSegment(PathType.BEZIER) 
+        },
+        { 
+            icon: (
+                <Suspense fallback={<IconFallback />}>
+                    <GridOnIcon />
+                </Suspense>
+            ), 
+            name: 'Path: Grid', 
+            onClick: () => addPathSegment(PathType.GRID) 
+        },
+        { 
+            icon: (
+                <Suspense fallback={<IconFallback />}>
+                    <EditLocationIcon />
+                </Suspense>
+            ), 
+            name: 'Draw Polygon Area', 
+            onClick: startPolygonDrawing 
+        },
     ];
     // --- End handlers ---
 
@@ -212,6 +316,45 @@ const MissionPlanningLayout: React.FC = () => {
     const compatibleLenses = getCompatibleLenses(missionState.hardware?.camera ?? null);
     const availableFStops = getLensFStops(missionState.hardware?.lensDetails ?? undefined);
     const focusDistanceFt = metersToFeet(missionState.hardware?.focusDistance ?? 10);
+
+    // --- New Handler for Mode Change ---
+    // This function will be passed to the ToggleButtonGroup
+    const handleModeChange = (_event: React.MouseEvent<HTMLElement>, newMode: string | null) => {
+        if (newMode !== null) { // Ensure a value was selected
+            if (newMode === SIMULATE_MODE) {
+                missionDispatch({ type: 'SET_LIVE_MODE', payload: false });
+                // If you need to stop simulation when switching back from live:
+                // missionDispatch({ type: 'STOP_SIMULATION' }); 
+            } else if (newMode === LIVE_MODE) {
+                missionDispatch({ type: 'STOP_SIMULATION' }); // Ensure simulation stops when going live
+                missionDispatch({ type: 'SET_LIVE_MODE', payload: true });
+            }
+        }
+    };
+    // --- End New Handler ---
+
+    // --- Handler for Mission Selection Dropdown ---
+    const handleMissionSelect = (event: SelectChangeEvent<string>) => {
+        const selectedMissionId = event.target.value;
+        if (selectedMissionId) {
+            missionDispatch({ type: 'SET_ACTIVE_MISSION', payload: selectedMissionId });
+        }
+    };
+    // --- End Handler ---
+
+    // --- Handler for Path Segment Checkbox Change ---
+    const handleSegmentToggle = (segmentId: string) => {
+        missionDispatch({ type: 'TOGGLE_PATH_SEGMENT_SELECTION', payload: segmentId });
+    };
+    // --- End Handler ---
+
+    // --- Handler for Deleting Path Segment (can reuse if simple) ---
+    const handleDeleteSegment = (segmentId: string) => {
+        // Optional: Add confirmation dialog here
+        console.log(`Dispatching DELETE_PATH_SEGMENT from Layout for ID: ${segmentId}`);
+        missionDispatch({ type: 'DELETE_PATH_SEGMENT', payload: segmentId });
+    };
+    // --- End Handler ---
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}>
@@ -323,38 +466,78 @@ const MissionPlanningLayout: React.FC = () => {
                         >
                              <SettingsIcon fontSize="small" />
                          </IconButton>
-                         <Button 
-                            variant="outlined" 
-                            startIcon={<PlayCircleOutlineIcon />}
+
+                         {/* --- Replace Buttons with ToggleButtonGroup --- */}
+                         <ToggleButtonGroup
+                            value={isLive ? LIVE_MODE : SIMULATE_MODE}
+                            exclusive
+                            onChange={handleModeChange}
+                            aria-label="application mode"
+                            size="small" // Match button size if needed
                             sx={{ 
-                                color: '#4fc3f7',
-                                borderColor: 'rgba(79, 195, 247, 0.5)',
-                                textTransform: 'none',
-                                fontSize: '0.85rem',
-                                '&:hover': {
-                                    borderColor: '#4fc3f7',
-                                    backgroundColor: 'rgba(79, 195, 247, 0.08)',
-                                }
+                                // Add some styling to make the group look cohesive
+                                // borderRadius: 1, 
+                                // border: '1px solid rgba(255, 255, 255, 0.12)',
                             }}
-                        >
-                             Simulate
-                         </Button>
-                         <Button 
-                            variant="outlined" 
-                            startIcon={<SensorsIcon />}
-                            sx={{ 
-                                color: '#ff3366',
-                                borderColor: 'rgba(255, 51, 102, 0.5)',
-                                textTransform: 'none',
-                                fontSize: '0.85rem',
-                                '&:hover': {
-                                    borderColor: '#ff3366',
-                                    backgroundColor: 'rgba(255, 51, 102, 0.08)',
-                                }
-                            }}
-                        >
-                             Live
-                         </Button>
+                         >
+                            <ToggleButton 
+                                value={SIMULATE_MODE} 
+                                aria-label="simulate mode"
+                                sx={{
+                                    textTransform: 'none',
+                                    fontSize: '0.85rem',
+                                    color: isLive ? 'rgba(255, 255, 255, 0.7)' : '#4fc3f7', // Active color based on isLive
+                                    borderColor: isLive ? 'rgba(255, 255, 255, 0.12)' : 'rgba(79, 195, 247, 0.5)',
+                                    animation: isSimulating && !isLive ? `${flashAnimation} 1.5s linear infinite` : 'none',
+                                    '&.Mui-selected': {
+                                        color: '#4fc3f7',
+                                        backgroundColor: 'rgba(79, 195, 247, 0.08)', 
+                                        borderColor: 'rgba(79, 195, 247, 0.5)',
+                                        '&:hover': {
+                                            backgroundColor: 'rgba(79, 195, 247, 0.15)',
+                                        },
+                                    },
+                                    '&:not(.Mui-selected)': { // Style for the non-selected state
+                                        borderColor: 'rgba(255, 255, 255, 0.12)',
+                                         '&:hover': {
+                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                                        }
+                                    },
+                                }}
+                            >
+                                <PlayCircleOutlineIcon sx={{ mr: 0.5, fontSize: '1.1rem' }} /> 
+                                {!isLive && isSimulating ? 'Simulate' : 'Planning'}
+                            </ToggleButton>
+                            <ToggleButton 
+                                value={LIVE_MODE} 
+                                aria-label="live mode"
+                                sx={{
+                                    textTransform: 'none',
+                                    fontSize: '0.85rem',
+                                    color: isLive ? '#ff3366' : 'rgba(255, 255, 255, 0.7)', // Active color based on isLive
+                                    borderColor: isLive ? 'rgba(255, 51, 102, 0.5)' : 'rgba(255, 255, 255, 0.12)',
+                                     '&.Mui-selected': {
+                                        color: '#ff3366',
+                                        backgroundColor: 'rgba(255, 51, 102, 0.08)',
+                                        borderColor: 'rgba(255, 51, 102, 0.5)',
+                                         '&:hover': {
+                                            backgroundColor: 'rgba(255, 51, 102, 0.15)',
+                                        },
+                                    },
+                                     '&:not(.Mui-selected)': { // Style for the non-selected state
+                                        borderColor: 'rgba(255, 255, 255, 0.12)',
+                                        '&:hover': {
+                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                                        }
+                                    },
+                                }}
+                            >
+                                 <SensorsIcon sx={{ mr: 0.5, fontSize: '1.1rem' }} /> Live
+                            </ToggleButton>
+                         </ToggleButtonGroup>
+                         {/* --- End Replacement --- */}
                     </Stack>
                 </Toolbar>
             </Paper>
@@ -387,39 +570,22 @@ const MissionPlanningLayout: React.FC = () => {
                     {/* Step/Control Content Area - Add check for activeControlPane */}
                     <Box sx={{ flexGrow: 1, p: isLeftPanelOpen ? 2 : 0, overflowY: 'auto' }}> {/* Conditional padding */}
                         {/* Only render content if pane is active and open */}
-                        {isLeftPanelOpen && activeControlPane === 'pre-checks' && <MissionPreChecksStep />} 
-                        {isLeftPanelOpen && activeControlPane === 'build-scene' && <BuildSceneStep />} 
-                        {isLeftPanelOpen && activeControlPane === 'mission-planning' && <MissionPlanningStep />} 
+                        {isLeftPanelOpen && activeControlPane === 'pre-checks' && (
+                            <Suspense fallback={<LoadingFallback />}>
+                                <MissionPreChecksStep />
+                            </Suspense>
+                        )}
+                        {isLeftPanelOpen && activeControlPane === 'build-scene' && (
+                            <Suspense fallback={<LoadingFallback />}>
+                                <BuildSceneStep />
+                            </Suspense>
+                        )}
+                        {isLeftPanelOpen && activeControlPane === 'mission-planning' && (
+                            <Suspense fallback={<LoadingFallback />}>
+                                <MissionPlanningStep />
+                            </Suspense>
+                        )}
                     </Box>
-                    
-                    {/* Hardware Button at bottom of left panel - only show if panel is open */}
-                    {isLeftPanelOpen && (
-                        <Box sx={{ 
-                            mt: 'auto', 
-                            p: 2, 
-                            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-                            backgroundColor: 'rgba(21, 21, 21, 0.9)'
-                        }}>
-                            <Button 
-                                variant="outlined"
-                                fullWidth
-                                startIcon={<CameraIcon />} 
-                                onClick={handleOpenHardwareModal}
-                                sx={{ 
-                                    textTransform: 'none',
-                                    color: '#4fc3f7',
-                                    borderColor: 'rgba(79, 195, 247, 0.5)',
-                                    py: 1,
-                                    '&:hover': {
-                                        backgroundColor: 'rgba(79, 195, 247, 0.08)',
-                                        borderColor: 'rgba(79, 195, 247, 0.8)',
-                                    }
-                                }}
-                            >
-                                Configure Hardware
-                            </Button>
-                        </Box>
-                    )}
                     
                     {/* Hardware Accordion - only show if panel is open */}
                     {isLeftPanelOpen && missionState.hardware && (
@@ -701,7 +867,9 @@ const MissionPlanningLayout: React.FC = () => {
                         overflow: 'hidden',   // Hide viewer overflow if it exceeds this box
                         minHeight: 0         // Needed for flex-grow in some scenarios
                     }}>
-                        <Local3DViewer height="100%" /> {/* Ensure viewer fills this wrapper */}
+                        <Suspense fallback={<LoadingFallback />}>
+                            <Local3DViewer height="100%" /> {/* Ensure viewer fills this wrapper */}
+                        </Suspense>
                     </Box>
                     
                     {/* Sliding Bottom Panel (Remains the second flex item) */} 
@@ -765,9 +933,156 @@ const MissionPlanningLayout: React.FC = () => {
                             backgroundColor: 'rgba(25, 25, 25, 0.3)',
                             color: 'rgba(255, 255, 255, 0.9)'
                         }}> {/* Allow content to scroll */} 
-                            {/* Tab Panel for Mission Controls (index 0) - Rebuilt UI */} 
+                            {/* Tab Panel for Mission Controls (index 0) */}
                             <TabPanel value={activeTabIndex} index={0}>
-                                <Stack spacing={4} divider={<Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)' }} orientation="horizontal" flexItem />}> 
+                                {/* Active Mission Selection Dropdown */} 
+                                <FormControl fullWidth size="small" sx={{ mb: 2 }}> {/* Reduced bottom margin */}
+                                    <InputLabel id="active-mission-select-label" sx={{ color: 'rgba(255, 255, 255, 0.7)', '&.Mui-focused': { color: '#4fc3f7' }}}>Active Mission</InputLabel>
+                                    <Select
+                                        labelId="active-mission-select-label"
+                                        value={currentMission?.id ? (missions.some(m => m.id === currentMission.id) ? currentMission.id : '') : ''}
+                                        label="Active Mission"
+                                        onChange={handleMissionSelect}
+                                        sx={{
+                                            color: 'rgba(255, 255, 255, 0.9)',
+                                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.23)' },
+                                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' },
+                                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#4fc3f7' },
+                                            '& .MuiSelect-icon': { color: 'rgba(255, 255, 255, 0.7)' }
+                                        }}
+                                        MenuProps={{
+                                             PaperProps: {
+                                                 sx: {
+                                                     bgcolor: 'rgba(40, 40, 40, 0.95)', // Darker background for dropdown
+                                                     border: '1px solid rgba(255, 255, 255, 0.12)',
+                                                     '& .MuiMenuItem-root': {
+                                                         color: 'rgba(255, 255, 255, 0.8)',
+                                                         fontSize: '0.9rem',
+                                                         '&:hover': {
+                                                             backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                                                         },
+                                                         '&.Mui-selected': {
+                                                             backgroundColor: 'rgba(79, 195, 247, 0.15)', // Match theme highlight
+                                                             color: '#ffffff'
+                                                         }
+                                                     }
+                                                 }
+                                             }
+                                        }}
+                                    >
+                                        <MenuItem value=""><em>Select Mission...</em></MenuItem>
+                                        {missions.map((mission) => (
+                                            <MenuItem key={mission.id} value={mission.id}>
+                                                {mission.name} ({mission.id.substring(0, 6)}...)
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                                
+                                {/* Path Segment Selection Checkboxes */} 
+                                {currentMission && currentMission.pathSegments.length > 0 && (
+                                    <Box sx={{ mb: 3 }}>
+                                        <Typography variant="subtitle2" gutterBottom sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                                            Visible Path Segments
+                                        </Typography>
+                                        <FormGroup sx={{ pl: 1 }}>
+                                            {currentMission.pathSegments.map((segment) => {
+                                                // Calculate derived data for the segment
+                                                const distanceMeters = calculateSegmentDistance(segment.waypoints);
+                                                const distanceFeet = metersToFeet(distanceMeters);
+                                                const photoCount = countPhotosInSegment(segment.waypoints);
+                                                const timeSeconds = calculateSegmentTime(distanceMeters, segment.speed, currentMission.defaultSpeed);
+                                                const timeFormatted = formatTimeMMSS(timeSeconds);
+
+                                                return (
+                                                  <Box 
+                                                    key={segment.id} 
+                                                    sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}
+                                                  >
+                                                    {/* Checkbox and Label */}
+                                                    <FormControlLabel
+                                                      sx={{ flexGrow: 1, mr: 1 }} // Let it grow, leave space for button
+                                                      control={
+                                                        <Checkbox 
+                                                          checked={selectedPathSegmentIds.includes(segment.id)}
+                                                          onChange={() => handleSegmentToggle(segment.id)}
+                                                          size="small"
+                                                          sx={{
+                                                            color: 'rgba(255, 255, 255, 0.6)',
+                                                            '&.Mui-checked': {
+                                                              color: '#4fc3f7', 
+                                                            },
+                                                            padding: '4px 8px' // Adjust padding if needed
+                                                          }}
+                                                        />
+                                                      }
+                                                      label={
+                                                        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                                          {/* Line 1: Type and Waypoint Count */}
+                                                          <Typography variant="body2" sx={{ fontSize: '0.85rem', lineHeight: 1.2 }}>
+                                                            {segment.type || 'Path'} ({segment.waypoints?.length || 0} wp)
+                                                          </Typography>
+                                                          {/* Line 2: Derived Data */}
+                                                          <Stack 
+                                                            direction="row" 
+                                                            spacing={1} 
+                                                            alignItems="center" 
+                                                            sx={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.7rem', mt: 0.25 }}
+                                                          >
+                                                            <Tooltip title="Distance" placement="top">
+                                                              <Stack direction="row" alignItems="center" spacing={0.2}>
+                                                                <StraightenIcon sx={{ fontSize: '0.75rem' }} />
+                                                                <span>{distanceFeet.toFixed(0)} ft</span>
+                                                              </Stack>
+                                                            </Tooltip>
+                                                            <Tooltip title="Est. Time" placement="top">
+                                                              <Stack direction="row" alignItems="center" spacing={0.2}>
+                                                                <TimerIcon sx={{ fontSize: '0.75rem' }} />
+                                                                <span>{timeFormatted}</span>
+                                                              </Stack>
+                                                            </Tooltip>
+                                                            <Tooltip title="Photos" placement="top">
+                                                              <Stack direction="row" alignItems="center" spacing={0.2}>
+                                                                <CameraAltIcon sx={{ fontSize: '0.75rem' }} />
+                                                                <span>{photoCount}</span>
+                                                              </Stack>
+                                                            </Tooltip>
+                                                          </Stack>
+                                                          {/* Line 3: ID */}
+                                                          <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.1, fontFamily: '"Roboto Mono", monospace' }}>
+                                                            ID: {segment.id.substring(0, 6)}...
+                                                          </Typography>
+                                                        </Box>
+                                                      } // Closing brace for label prop
+                                                    /> {/* Closing tag for FormControlLabel */}
+
+                                                    {/* Delete Button */}
+                                                    <Tooltip title="Delete Path Segment">
+                                                      <IconButton
+                                                        aria-label="delete segment"
+                                                        onClick={() => handleDeleteSegment(segment.id)}
+                                                        size="small"
+                                                        sx={{
+                                                          color: 'rgba(255, 100, 100, 0.6)',
+                                                          '&:hover': {
+                                                            backgroundColor: 'rgba(255, 100, 100, 0.1)',
+                                                            color: '#ff6464'
+                                                          },
+                                                          ml: 'auto' // Push to the right
+                                                        }}
+                                                      >
+                                                        <DeleteIcon fontSize="inherit" />
+                                                      </IconButton>
+                                                    </Tooltip>
+                                                  </Box> // Closing tag for outer Box
+                                                ); // Closing parenthesis for return
+                                            })} {/* Closing brace and parenthesis for map */}
+                                        </FormGroup>
+                                    </Box>
+                                )}
+                                {/* ... End Path Segment Selection ... */}
+
+                                <Stack spacing={4} divider={<Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)' }} orientation="horizontal" flexItem />}>
                                     {/* General Controls Section */}
                                     <Box>
                                         <Typography 
@@ -969,12 +1284,13 @@ const MissionPlanningLayout: React.FC = () => {
                 </Box>
             </Box>
 
-            {/* Placeholder for Hardware Selection Modal */}
-            <HardwareSelectionModal 
-                open={isHardwareModalOpen} 
-                onClose={handleCloseHardwareModal}
-                onConfirm={handleCloseHardwareModal}
-            />
+            <Suspense fallback={<LoadingFallback />}>
+                <HardwareSelectionModal 
+                    open={isHardwareModalOpen} 
+                    onClose={handleCloseHardwareModal} 
+                    onConfirm={handleCloseHardwareModal} 
+                />
+            </Suspense>
         </Box>
     );
 };

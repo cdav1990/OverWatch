@@ -12,22 +12,26 @@ interface Mission3DGeneratorProps {
 }
 
 const Mission3DGenerator: React.FC<Mission3DGeneratorProps> = ({ isEmbedded = false }) => {
-    const { state } = useMission();
-    const { currentMission } = state;
+    const { state, dispatch } = useMission();
+    const { currentMission, selectedFace } = state;
+
+    const handleGenerateMission = () => {
+        if (!selectedFace) {
+            alert('Please select a mission area face first using the "Select Area Face" tool.');
+            return;
+        }
+
+        if (!currentMission) return;
+
+        console.log("Generating 3D mission using selected face:", selectedFace);
+        alert('3D path generation from face not implemented yet.');
+    };
 
     return (
         <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
                 The 3D blah Mission generator creates paths to cover 3D structures from multiple angles and heights. Select a structure and define coverage parameters.
             </Typography>
-            <Button 
-                variant="outlined" 
-                color="primary"
-                disabled={!currentMission}
-                fullWidth
-            >
-                Select 3D Structure
-            </Button>
             <TextField 
                 label="Min Altitude (AGL, m)" 
                 variant="outlined" 
@@ -67,6 +71,7 @@ const Mission3DGenerator: React.FC<Mission3DGeneratorProps> = ({ isEmbedded = fa
             <Button 
                 variant="contained" 
                 disabled={!currentMission}
+                onClick={handleGenerateMission}
             >
                 Generate 3D Mission
             </Button>

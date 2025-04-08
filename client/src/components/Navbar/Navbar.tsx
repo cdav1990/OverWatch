@@ -2,7 +2,7 @@ import { AppBar, Box, Toolbar, Typography, Button, IconButton, Container, useThe
 import MenuIcon from '@mui/icons-material/Menu';
 import { useState } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
-import { useThemeContext } from '../../context/ThemeContext/ThemeContext';
+import { useThemeContext } from '../../context/ThemeContext';
 import { styled, keyframes } from '@mui/material/styles';
 
 // Add subtle pulse animation for navbar logo
@@ -96,6 +96,7 @@ const Navbar = ({ onMenuToggle }: NavbarProps) => {
               { label: 'Dashboard', path: '/' },
               { label: 'Geo', path: '/geo' },
               { label: 'Mission Planning', path: '/mission' },
+              { label: 'ROS Bridge', path: '/ros-bridge' },
               { label: 'Telemetry', path: '/telemetry' },
               { label: 'Control', path: '/control' },
               { label: 'Settings', path: '/settings' },

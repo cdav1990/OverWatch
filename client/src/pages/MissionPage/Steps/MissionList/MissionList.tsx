@@ -11,12 +11,20 @@ import {
     IconButton,
     Avatar,
     Tooltip,
-    Divider
+    Divider,
+    FormControlLabel,
+    Checkbox,
+    Stack
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useMission } from '../../../../context/MissionContext';
 import RouteIcon from '@mui/icons-material/Route';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DeleteIcon from '@mui/icons-material/Delete';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import TimerIcon from '@mui/icons-material/Timer';
+import StraightenIcon from '@mui/icons-material/Straighten';
+import { calculateSegmentDistance, countPhotosInSegment, calculateSegmentTime, formatTimeMMSS } from '../../../../utils/pathUtils';
+import { metersToFeet } from '../../../../utils/sensorCalculations';
 
 // Styled components
 const SectionSubtitle = styled(Typography)(({ theme }) => ({
@@ -40,9 +48,8 @@ interface MissionListProps {
 }
 
 const MissionList: React.FC<MissionListProps> = () => {
-    const { state } = useMission();
-    const { currentMission } = state;
-    const [copiedMissionId, setCopiedMissionId] = useState<boolean>(false);
+    const { state, dispatch } = useMission();
+    const { currentMission, selectedPathSegmentIds } = state;
 
     // Format date helper function
     const formatDate = (date: Date | string | undefined) => {
@@ -54,32 +61,31 @@ const MissionList: React.FC<MissionListProps> = () => {
         }
     };
 
-    // Function to handle copying mission ID
-    const handleCopyMissionId = () => {
-        if (currentMission && currentMission.id) {
-            navigator.clipboard.writeText(currentMission.id)
-                .then(() => {
-                    setCopiedMissionId(true);
-                    setTimeout(() => setCopiedMissionId(false), 2000);
-                })
-                .catch(err => {
-                    console.error('Failed to copy mission ID:', err);
-                });
-        }
+    // --- Handler for Path Segment Checkbox Change --- 
+    const handleSegmentToggle = (segmentId: string) => {
+        dispatch({ type: 'TOGGLE_PATH_SEGMENT_SELECTION', payload: segmentId });
     };
+    // --- End Handler ---
+
+    // --- Handler for Deleting Path Segment ---
+    const handleDeleteSegment = (segmentId: string) => {
+        // Optional: Add confirmation dialog here
+        console.log(`Dispatching DELETE_PATH_SEGMENT for ID: ${segmentId}`);
+        dispatch({ type: 'DELETE_PATH_SEGMENT', payload: segmentId });
+    };
+    // --- End Handler ---
 
     if (!currentMission) return null;
     
-    // Get path segments safely with fallback
     const pathSegments = currentMission.pathSegments || [];
     
     return (
         <Paper 
             variant="outlined" 
             sx={{ 
-                p: 2, 
-                mt: 3, 
-                mb: 3,
+                p: 1.5,
+                mt: 2,
+                mb: 2,
                 bgcolor: (theme) => theme.palette.mode === 'dark' 
                     ? 'rgba(30, 30, 30, 0.5)'
                     : 'rgba(245, 245, 245, 0.7)',
@@ -91,171 +97,187 @@ const MissionList: React.FC<MissionListProps> = () => {
                     : '0px 2px 6px rgba(0, 0, 0, 0.05)'
             }}
         >
-            <SectionSubtitle variant="subtitle1">Mission List</SectionSubtitle>
-            <List sx={{ p: 0 }}>
-                <StyledListItem 
-                    sx={{
-                        backgroundColor: (theme) => theme.palette.mode === 'dark' 
-                            ? 'rgba(30, 30, 30, 0.6)'
-                            : 'rgba(240, 240, 240, 0.6)',
-                        '&:hover': {
-                            backgroundColor: (theme) => theme.palette.mode === 'dark'
-                                ? 'rgba(40, 40, 40, 0.8)'
-                                : 'rgba(230, 230, 230, 0.8)'
-                        }
-                    }}
-                >
-                    <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: '#4fc3f7', width: 30, height: 30 }}>
-                            <RouteIcon fontSize="small" />
-                        </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                        primary={
-                            <Typography variant="body2" sx={{ 
+            <SectionSubtitle variant="subtitle1" sx={{ mb: 1.5 }}>
+                Current Mission
+            </SectionSubtitle>
+            <Box 
+                 sx={{
+                    pl: 1,
+                    mb: 2,
+                    backgroundColor: (theme) => theme.palette.mode === 'dark' 
+                        ? 'rgba(30, 30, 30, 0.4)'
+                        : 'rgba(240, 240, 240, 0.4)',
+                    borderRadius: '4px',
+                    pb: 0.5
+                 }}
+            >
+                <ListItemText
+                    primary={
+                        <Typography variant="body1" sx={{
+                            fontWeight: 500,
+                            color: (theme) => theme.palette.mode === 'dark'
+                                ? 'rgba(255, 255, 255, 0.95)'
+                                : 'rgba(0, 0, 0, 0.9)',
+                            pt: 1
+                        }}>
+                            {currentMission.name || 'Unnamed Mission'}
+                        </Typography>
+                    }
+                    secondary={
+                        <Typography 
+                            variant="caption" 
+                            component="div"
+                            sx={{
                                 color: (theme) => theme.palette.mode === 'dark'
-                                    ? 'rgba(255, 255, 255, 0.9)'
-                                    : 'rgba(0, 0, 0, 0.9)'
-                            }}>
-                                {currentMission.name || 'Unnamed Mission'}
-                            </Typography>
-                        }
-                        secondary={
-                            <Typography 
-                                variant="caption" 
-                                component="div"
-                                sx={{ 
-                                    color: (theme) => theme.palette.mode === 'dark'
-                                        ? 'rgba(255, 255, 255, 0.6)'
-                                        : 'rgba(0, 0, 0, 0.6)', 
-                                    fontFamily: '"Roboto Mono", monospace',
-                                }}
-                            >
-                                <strong>UUID:</strong> {currentMission.id}
-                                <br />
-                                {currentMission.region && (
-                                    <>
-                                        <strong>Region:</strong> {currentMission.region.name}
-                                        <br />
-                                    </>
-                                )}
-                                <strong>Default Alt:</strong> {currentMission.defaultAltitude || 0}m | <strong>Speed:</strong> {currentMission.defaultSpeed || 0}m/s
-                                <br />
-                                <strong>Created:</strong> {formatDate(currentMission.createdAt)}
-                            </Typography>
-                        }
-                    />
-                    <ListItemSecondaryAction sx={{ position: 'relative' }}>
-                        {copiedMissionId && (
-                            <Box
-                                sx={{
-                                    position: 'absolute',
-                                    right: '100%',
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    marginRight: 1,
-                                    backgroundColor: (theme) => theme.palette.mode === 'dark'
-                                        ? 'rgba(76, 175, 80, 0.9)'
-                                        : 'rgba(76, 175, 80, 0.8)',
-                                    color: '#fff',
-                                    borderRadius: 0.5,
-                                    fontSize: '0.7rem',
-                                    padding: '2px 6px',
-                                    whiteSpace: 'nowrap',
-                                    animation: 'fadeIn 0.3s ease-in-out',
-                                    '@keyframes fadeIn': {
-                                        '0%': { opacity: 0, transform: 'translateY(-50%) translateX(5px)' },
-                                        '100%': { opacity: 1, transform: 'translateY(-50%) translateX(0)' },
-                                    }
-                                }}
-                            >
-                                Copied!
-                            </Box>
-                        )}
-                        <Tooltip title="Copy Mission UUID">
-                            <IconButton
-                                edge="end"
-                                aria-label="copy-id"
-                                onClick={handleCopyMissionId}
-                                size="small"
-                                sx={{
-                                    color: 'rgba(79, 195, 247, 0.7)',
-                                    '&:hover': {
-                                        backgroundColor: 'rgba(79, 195, 247, 0.15)',
-                                        color: '#4fc3f7'
-                                    }
-                                }}
-                            >
-                                <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                    </ListItemSecondaryAction>
-                </StyledListItem>
-            </List>
+                                    ? 'rgba(255, 255, 255, 0.6)'
+                                    : 'rgba(0, 0, 0, 0.6)', 
+                                fontFamily: '"Roboto Mono", monospace',
+                                fontSize: '0.7rem',
+                                lineHeight: 1.3,
+                                mt: 0.25
+                            }}
+                        >
+                            ID: {currentMission.id} <br />
+                            {currentMission.region && (
+                                <>Region: {currentMission.region.name}<br /></>
+                            )}
+                            Created: {formatDate(currentMission.createdAt)}
+                        </Typography>
+                    }
+                    sx={{ my: 0 }}
+                />
+            </Box>
             
             {pathSegments.length > 0 && (
                 <>
-                    <Typography 
-                        variant="caption" 
-                        sx={{ 
-                            display: 'block', 
-                            color: (theme) => theme.palette.mode === 'dark'
-                                ? 'rgba(255, 255, 255, 0.7)'
-                                : 'rgba(0, 0, 0, 0.7)', 
-                            mt: 2, 
-                            mb: 1,
-                            fontWeight: 500
-                        }}
-                    >
-                        Path Segments: {pathSegments.length}
-                    </Typography>
-                    <Box 
-                        sx={{ 
-                            backgroundColor: (theme) => theme.palette.mode === 'dark'
-                                ? 'rgba(79, 195, 247, 0.1)' 
-                                : 'rgba(79, 195, 247, 0.08)',
-                            borderRadius: 1, 
-                            p: 1, 
-                            fontFamily: '"Roboto Mono", monospace',
-                            fontSize: '0.75rem',
-                            color: (theme) => theme.palette.mode === 'dark'
-                                ? 'rgba(255, 255, 255, 0.7)'
-                                : 'rgba(0, 0, 0, 0.7)',
-                        }}
-                    >
-                        {pathSegments.map((segment, idx) => (
-                            <Box key={segment.id} sx={{ mb: idx < pathSegments.length - 1 ? 1 : 0 }}>
-                                <Typography variant="caption" sx={{ 
-                                    color: (theme) => theme.palette.mode === 'dark'
-                                        ? 'rgba(255, 255, 255, 0.9)'
-                                        : 'rgba(0, 0, 0, 0.9)'
-                                }}>
-                                    {segment.type} ({segment.waypoints?.length || 0} waypoints)
-                                </Typography>
-                                <Typography 
-                                    variant="caption" 
+                    <Divider sx={{ mb: 2, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+                    <SectionSubtitle variant="subtitle1">Path Segments</SectionSubtitle>
+                    <List sx={{ p: 0 }}>
+                        {pathSegments.map((segment) => {
+                            const distanceMeters = calculateSegmentDistance(segment.waypoints);
+                            const distanceFeet = metersToFeet(distanceMeters);
+                            const photoCount = countPhotosInSegment(segment.waypoints);
+                            const timeSeconds = calculateSegmentTime(distanceMeters, segment.speed, currentMission.defaultSpeed);
+                            const timeFormatted = formatTimeMMSS(timeSeconds);
+
+                            return (
+                                <StyledListItem 
+                                    key={segment.id}
                                     sx={{ 
-                                        display: 'block',
-                                        color: (theme) => theme.palette.mode === 'dark'
-                                            ? 'rgba(255, 255, 255, 0.5)'
-                                            : 'rgba(0, 0, 0, 0.5)',
-                                        fontSize: '0.65rem',
-                                        mt: 0.5
+                                        mb: 1,
+                                        pl: 1,
+                                        backgroundColor: (theme) => theme.palette.mode === 'dark' 
+                                            ? 'rgba(30, 30, 30, 0.6)'
+                                            : 'rgba(240, 240, 240, 0.6)',
+                                        '&:hover': {
+                                            backgroundColor: (theme) => theme.palette.mode === 'dark'
+                                                ? 'rgba(40, 40, 40, 0.8)'
+                                                : 'rgba(230, 230, 230, 0.8)'
+                                        }
                                     }}
+                                    secondaryAction={ 
+                                        <Tooltip title="Delete Path Segment">
+                                            <IconButton 
+                                                edge="end" 
+                                                aria-label="delete segment"
+                                                onClick={() => handleDeleteSegment(segment.id)}
+                                                size="small"
+                                                sx={{
+                                                    color: 'rgba(255, 100, 100, 0.7)',
+                                                    '&:hover': {
+                                                        backgroundColor: 'rgba(255, 100, 100, 0.15)',
+                                                        color: '#ff6464'
+                                                    }
+                                                }}
+                                            >
+                                                <DeleteIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
+                                    }
                                 >
-                                    ID: {segment.id ? segment.id.substring(0, 8) : 'N/A'}...
-                                </Typography>
-                                {idx < pathSegments.length - 1 && (
-                                    <Divider sx={{ 
-                                        my: 1, 
-                                        borderColor: (theme) => theme.palette.mode === 'dark'
-                                            ? 'rgba(255, 255, 255, 0.05)'
-                                            : 'rgba(0, 0, 0, 0.05)' 
-                                    }} />
-                                )}
-                            </Box>
-                        ))}
-                    </Box>
+                                    <FormControlLabel
+                                         sx={{ flexGrow: 1, mr: 4 }}
+                                         control={
+                                             <Checkbox 
+                                                 checked={selectedPathSegmentIds.includes(segment.id)}
+                                                 onChange={() => handleSegmentToggle(segment.id)}
+                                                 size="small"
+                                                 sx={{
+                                                     color: 'rgba(255, 255, 255, 0.6)',
+                                                     '&.Mui-checked': {
+                                                         color: '#4fc3f7',
+                                                     },
+                                                     padding: '4px 8px 4px 4px'
+                                                 }}
+                                             />
+                                         }
+                                         label={
+                                            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                                <Typography variant="body2" sx={{ 
+                                                    color: (theme) => theme.palette.mode === 'dark'
+                                                        ? 'rgba(255, 255, 255, 0.9)'
+                                                        : 'rgba(0, 0, 0, 0.9)',
+                                                    lineHeight: 1.2
+                                                }}>
+                                                    {segment.type || 'Path'} ({segment.waypoints?.length || 0} waypoints)
+                                                </Typography>
+                                                <Stack 
+                                                    direction="row" 
+                                                    spacing={1.5} 
+                                                    alignItems="center" 
+                                                    sx={{ 
+                                                        color: (theme) => theme.palette.mode === 'dark'
+                                                            ? 'rgba(255, 255, 255, 0.6)'
+                                                            : 'rgba(0, 0, 0, 0.6)',
+                                                        mt: 0.5
+                                                    }}
+                                                >
+                                                    <Tooltip title="Distance">
+                                                        <Stack direction="row" alignItems="center" spacing={0.3}>
+                                                            <StraightenIcon sx={{ fontSize: '0.8rem' }} />
+                                                            <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                                                {distanceFeet.toFixed(0)} ft
+                                                            </Typography>
+                                                        </Stack>
+                                                    </Tooltip>
+                                                    <Tooltip title="Est. Time">
+                                                        <Stack direction="row" alignItems="center" spacing={0.3}>
+                                                            <TimerIcon sx={{ fontSize: '0.8rem' }} />
+                                                            <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                                                {timeFormatted}
+                                                            </Typography>
+                                                        </Stack>
+                                                    </Tooltip>
+                                                    <Tooltip title="Photos">
+                                                        <Stack direction="row" alignItems="center" spacing={0.3}>
+                                                            <CameraAltIcon sx={{ fontSize: '0.8rem' }} />
+                                                            <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                                                {photoCount}
+                                                            </Typography>
+                                                        </Stack>
+                                                    </Tooltip>
+                                                </Stack>
+                                                <Typography 
+                                                    variant="caption" 
+                                                    sx={{ 
+                                                        color: (theme) => theme.palette.mode === 'dark'
+                                                            ? 'rgba(255, 255, 255, 0.5)'
+                                                            : 'rgba(0, 0, 0, 0.5)',
+                                                        fontSize: '0.65rem',
+                                                        fontFamily: '"Roboto Mono", monospace',
+                                                        lineHeight: 1.1,
+                                                        mt: 0.5
+                                                    }}
+                                                >
+                                                    ID: {segment.id ? segment.id.substring(0, 8) : 'N/A'}...
+                                                </Typography>
+                                            </Box>
+                                         }
+                                     />
+                                </StyledListItem>
+                            );
+                        })}
+                    </List>
                 </>
             )}
         </Paper>

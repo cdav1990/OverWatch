@@ -15,11 +15,14 @@ const PathLine: React.FC<PathLineProps> = ({
   selected, 
   onClick 
 }) => {
-  const { waypoints, type } = segment;
+  const { waypoints, type, groundProjections } = segment;
 
   if (waypoints.length < 2 || !waypoints[0].local) {
     return null; // Need at least 2 waypoints with local coords
   }
+  
+  // Check if this is a ground projection path by looking at the first waypoint
+  const isGroundProjection = waypoints[0].displayOptions?.isGroundProjection === true;
 
   // Map waypoints to 3D positions (convert from ENU to Three.js coordinate system)
   const points = waypoints
@@ -36,22 +39,54 @@ const PathLine: React.FC<PathLineProps> = ({
     curvePoints = curve.getPoints(Math.max(points.length * 10, 50));
   }
 
+  // Determine line style based on segment selection state
   const lineColor = selected ? '#ffeb3b' : '#ffffff'; // Yellow when selected, white otherwise
   const lineOpacity = selected ? 1.0 : 0.75;
-
+  const lineWidth = selected ? 2.5 : 1.5; // Thicker when selected
+  
+  // Create separate ground projection path if available
+  const groundProjectionPoints = groundProjections && groundProjections.length >= 2 
+    ? groundProjections
+        .filter(wp => wp.local)
+        .map(wp => wp.local!)
+        .map(local => new THREE.Vector3(local.x, local.z, -local.y))
+    : [];
+    
+  const hasGroundProjections = groundProjectionPoints.length >= 2;
+  
   return (
-    <Line
-      points={curvePoints}
-      color={lineColor}
-      lineWidth={selected ? 2.5 : 1.5} // Thicker when selected
-      dashed={false}
-      onClick={(e: ThreeEvent<MouseEvent>) => { 
-        e.stopPropagation(); 
-        onClick(); 
-      }}
-      transparent={true}
-      opacity={lineOpacity}
-    />
+    <>
+      {/* Main flight path */}
+      <Line
+        points={curvePoints}
+        color={lineColor}
+        lineWidth={lineWidth}
+        transparent={true}
+        opacity={lineOpacity}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+      />
+      
+      {/* Ground projection path if available */}
+      {hasGroundProjections && (
+        <Line
+          points={groundProjectionPoints}
+          color="#ffff00" // Yellow for ground projections
+          lineWidth={2.0}
+          dashed={true}
+          dashSize={0.5}
+          dashScale={1.0}
+          transparent={true}
+          opacity={0.6}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+        />
+      )}
+    </>
   );
 };
 

@@ -19,6 +19,11 @@ export default defineConfig({
     'CESIUM_BASE_URL': JSON.stringify('/cesium')
   },
   server: {
+    host: 'overwatch.local',
+    port: 5173,
+    strictPort: false,
+    open: 'http://overwatch.local:5173',
+    hmr: { overlay: true },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
@@ -32,16 +37,57 @@ export default defineConfig({
     }
   },
   build: {
+    target: 'esnext',
+    minify: 'esbuild',
+    cssMinify: true,
+    assetsInlineLimit: 4096,
+    chunkSizeWarningLimit: 1000,
+    reportCompressedSize: false,
     rollupOptions: {
       output: {
         manualChunks: {
           cesium: ['cesium'],
-          three: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
-        }
+          'three-core': ['three'],
+          'three-fiber': ['@react-three/fiber'],
+          'three-drei': ['@react-three/drei'],
+          'three-post': ['@react-three/postprocessing'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+          mui: [
+            '@mui/material',
+            '@mui/icons-material',
+            '@mui/lab', 
+            '@mui/x-tree-view',
+            '@emotion/react',
+            '@emotion/styled'
+          ]
+        },
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+        entryFileNames: 'assets/js/[name]-[hash].js',
+        assetFileNames: 'assets/[ext]/[name]-[hash].[ext]'
       }
     }
   },
   optimizeDeps: {
-    include: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing']
+    include: [
+      'three', 
+      '@react-three/fiber', 
+      '@react-three/drei', 
+      '@react-three/postprocessing',
+      'react', 
+      'react-dom', 
+      'react-router-dom'
+    ],
+    force: false,
+    esbuildOptions: {
+      target: 'esnext'
+    }
+  },
+  cacheDir: 'node_modules/.vite',
+  css: {
+    devSourcemap: false,
+  },
+  esbuild: {
+    logOverride: { 'this-is-undefined-in-esm': 'silent' },
+    target: 'esnext'
   }
 })

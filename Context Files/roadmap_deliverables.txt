@@ -1,0 +1,95 @@
+# Overwatch Command & Control Center - Roadmap & Deliverables
+
+## Goal:
+Transform the Overwatch mission planning platform into a comprehensive command and control center capable of real-time drone operation monitoring and control, integrating specific high-end sensors (Phase One, Ouster, Sony ILX) and leveraging ROS for robust communication and data handling.
+
+## Target Architecture:
+
+1.  **Backend Service (ROS Bridge):**
+    *   Acts as the central hub connecting hardware, flight controller, and the frontend.
+    *   Built using Node.js or Python.
+    *   **Responsibilities:**
+        *   Interface with hardware SDKs (Phase One, Ouster, Sony ILX) via dedicated ROS nodes.
+        *   Connect to the drone's flight controller (e.g., Pixhawk/PX4 via MAVROS).
+        *   Run `rosbridge_suite` (ROS Node) to provide a standard WebSocket interface to the ROS system.
+        *   Potentially run `Webrtc_ros` (ROS Node) for efficient, low-latency camera streaming.
+        *   Process/aggregate/relay ROS data (telemetry, sensor status, point clouds, images).
+        *   Handle commands received from the frontend via ROS services/actions.
+    *   **Key ROS Libraries/Nodes:** `rosbridge_suite`, `rclpy`/`rclnodejs`/`rosnodejs`, `Webrtc_ros`, custom nodes for SDK interaction, MAVROS.
+
+2.  **Frontend (React Application):**
+    *   The existing React-based Overwatch UI.
+    *   **Responsibilities:**
+        *   Connect to the backend's `rosbridge` WebSocket using `roslibjs` (JS Library).
+        *   Subscribe to ROS topics for live data (telemetry, sensor status, mission execution status).
+        *   Display live camera feeds using WebRTC (connecting to `Webrtc_ros` stream).
+        *   Visualize ROS data (drone pose, LiDAR clouds, paths) in the 3D scene, potentially using `ros3djs` (JS Library) integrated with `react-three-fiber`.
+        *   Send commands (start/stop mission, trigger camera) via `roslibjs` service/action calls.
+        *   Manage application state, including live operational data, using `MissionContext.tsx`.
+    *   **Key JS Libraries:** `roslibjs`, `react`, `react-three-fiber`, `three.js`, potentially `ros3djs`.
+
+3.  **External Tools:**
+    *   Utilize `Foxglove Studio` for advanced, offline debugging and visualization of ROS data (connecting to `rosbridge` or MCAP files).
+
+## Hardware Integration Targets:
+
+*   **Drone:** Freefly Alta X / Astro (or similar Pixhawk/PX4 based).
+*   **Flight Controller:** Cube Blue (communicating via MAVLink/MAVROS).
+*   **Cameras:**
+    *   Phase One IXM-100 (requires backend ROS node using Phase One SDK).
+    *   Sony ILX series (requires backend ROS node using Sony Camera Remote SDK/API).
+*   **LiDAR:** Ouster OS0-128 (requires backend ROS node using Ouster SDK).
+
+## Dependency Notes (April 8, 2025):
+*   Encountered peer dependency conflicts when adding `roslibjs`.
+*   Root cause identified: Project uses React 19, while `@react-spring@9.7.5` (a dependency) requires React <= 18.
+*   Investigation showed no stable version of `@react-spring` compatible with React 19 is currently available.
+*   **Decision:** Downgraded React to `^18.3.1` in the `client` project to ensure dependency stability and compatibility with `@react-spring` and other libraries before proceeding with ROS integration.
+
+## Phased Implementation Roadmap & Deliverables:
+
+**Phase 1: Foundation - ROS Communication**
+*   **Deliverable:** Basic backend service structure with `rosbridge_suite` running.
+*   **Deliverable:** Frontend connects to `rosbridge` via `roslibjs`.
+*   **Deliverable:** Basic publish/subscribe test working between frontend and backend.
+*   **Deliverable:** Refactored `MissionContext.tsx` with initial placeholders for `RealtimeTelemetry`, `LiveSensorStatus`, `MissionExecutionStatus`.
+
+**Phase 2: Basic Telemetry Integration**
+*   **Deliverable:** Backend service connects to flight controller (MAVROS).
+*   **Deliverable:** Essential drone telemetry (position, attitude, status) published as ROS topics.
+*   **Deliverable:** Frontend subscribes to telemetry topics via `roslibjs`.
+*   **Deliverable:** Live telemetry data updates `MissionContext.tsx`.
+*   **Deliverable:** Basic display of live drone position/attitude in the UI/3D scene.
+
+**Phase 3: Camera Integration (Iterative)**
+*   **Deliverable (Phase One):** Backend ROS node for Phase One SDK communication (status, trigger).
+*   **Deliverable (Phase One):** Live view streaming via `Webrtc_ros` (or alternative) & ROS Image messages.
+*   **Deliverable (Phase One):** Frontend displays Phase One status and live stream.
+*   **Deliverable (Sony ILX):** Backend ROS node for Sony SDK communication (status, trigger).
+*   **Deliverable (Sony ILX):** Live view streaming via `Webrtc_ros` (or alternative) & ROS Image messages.
+*   **Deliverable (Sony ILX):** Frontend displays Sony ILX status and live stream.
+
+**Phase 4: LiDAR Integration**
+*   **Deliverable:** Backend ROS node for Ouster SDK communication.
+*   **Deliverable:** Ouster data published as ROS `sensor_msgs/PointCloud2` messages.
+*   **Deliverable:** Basic visualization of PointCloud2 data in the frontend 3D scene (using `ros3djs` or custom `react-three-fiber` logic).
+
+**Phase 5: 3D Visualization Enhancements**
+*   **Deliverable:** Integration of `ros3djs` (if chosen) or further development of custom `react-three-fiber` components for rendering ROS data types (TF frames, Markers, PointClouds).
+*   **Deliverable:** Improved visualization of live drone pose, sensor frustums, and LiDAR data.
+
+**Phase 6: Command and Control Implementation**
+*   **Deliverable:** Frontend UI elements for key commands (e.g., Arm, Start Mission, Trigger Capture).
+*   **Deliverable:** Frontend uses `roslibjs` to call ROS services/actions on the backend for commands.
+*   **Deliverable:** Backend service handlers implement logic to translate ROS service/action calls into MAVLink commands and/or hardware SDK calls.
+*   **Deliverable:** Robust handling of mission execution status updates in `MissionContext.tsx` and UI display.
+
+**Phase 7: Configuration & Refinement**
+*   **Deliverable:** Implementation of loading mechanism for operational default profiles (e.g., 'Alta-X + PhaseOne + Ouster').
+*   **Deliverable:** Handling large waypoint paths efficiently during live execution (backend manages execution, frontend visualizes smartly).
+*   **Deliverable:** General testing, bug fixing, and UI/UX refinement for the command center workflow.
+
+**Ongoing:**
+*   Code cleanup, documentation, testing.
+*   Consideration of error handling, connection management, and robustness.
+*   Alignment with `Foxglove Studio` for debugging workflows. 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, Paper, ToggleButtonGroup, ToggleButton, Stack, Divider, useTheme } from '@mui/material';
 import { PaletteMode } from '@mui/material/styles';
-import { useThemeContext } from '../../context/ThemeContext/ThemeContext';
+import { useThemeContext } from '../../context/ThemeContext';
 import Brightness4Icon from '@mui/icons-material/Brightness4'; // Dark mode icon
 import Brightness7Icon from '@mui/icons-material/Brightness7'; // Light mode icon
 import PaletteIcon from '@mui/icons-material/Palette'; // Gecko theme icon (placeholder)

@@ -43,13 +43,13 @@ export interface HardwareState {
 export interface SceneSettings {
   gridSize: number;
   gridDivisions: number;
-  gridUnit: 'meters' | 'feet'; // Add unit option for the grid
-  fov: number;
-  backgroundColor: string; // Hex color string e.g., '#ffffff'
-  gridColorCenterLine: string;
-  gridColorGrid: string;
+  gridUnit: 'meters' | 'feet';
   gridVisible: boolean;
   gridFadeDistance: number;
+  gridColorCenterLine: string;
+  gridColorGrid: string;
+  fov: number;
+  backgroundColor: string; // Hex color string e.g., '#ffffff'
   ambientLightIntensity: number;
   directionalLightIntensity: number;
   skyEnabled: boolean;
@@ -79,8 +79,8 @@ export interface SelectedFaceInfo {
   objectId: string;
   faceId: string;
   faceIndex: number;
-  normal: THREE.Vector3;
-  vertices: THREE.Vector3[];
+  normal: { x: number; y: number; z: number };
+  vertices: { x: number; y: number; z: number }[];
   area: number;
 }
 
@@ -98,10 +98,64 @@ export interface MissionArea {
   createdAt: string;
 }
 
+// NEW: Real-time Drone Telemetry
+export interface RealtimeTelemetry {
+    timestamp: number; // UNIX timestamp ms
+    position?: LocalCoord; // Live local position
+    gps?: { lat: number; lon: number; alt: number }; // Live global position
+    attitude?: { roll: number; pitch: number; yaw: number }; // radians
+    velocity?: { vx: number; vy: number; vz: number }; // m/s in local frame
+    battery?: { voltage: number; remainingPercent: number };
+    gpsFixType?: number; // e.g., 0: No Fix, 3: 3D Fix, 4: DGPS, 5: RTK Float, 6: RTK Fixed
+    numSatellites?: number;
+    flightMode?: string; // e.g., "POSITION", "MISSION", "RTL"
+    armed?: boolean;
+    heading?: number; // degrees, 0-360
+    groundSpeed?: number; // m/s
+    climbRate?: number; // m/s
+}
+
+// NEW: Live Sensor Status
+export interface LiveSensorStatus {
+    camera: {
+        id: string; // Identifier for the camera (e.g., 'phaseone', 'sony-ilx')
+        connected: boolean;
+        recording?: boolean;
+        storageRemaining?: number; // e.g., photos or GB
+        lastCaptureTime?: number;
+        statusText?: string; // e.g., "Ready", "Error", "Capturing"
+        livePreviewUrl?: string; // Optional URL to an MJPEG/WebRTC stream
+    };
+    lidar: {
+        id: string; // Identifier (e.g., 'ouster-os0')
+        connected: boolean;
+        scanning?: boolean;
+        pointsPerSecond?: number;
+        statusText?: string;
+        // Note: Avoid storing dense point clouds directly in React state.
+        // The backend should process/visualize, or send minimal data.
+    };
+    // Add other sensors as needed (e.g., secondary cameras)
+}
+
+// NEW: Mission Execution Status
+export interface MissionExecutionStatus {
+    state: 'idle' | 'connecting' | 'uploading' | 'arming' | 'taking_off' | 'running' | 'paused' | 'returning' | 'landing' | 'error' | 'disconnected';
+    currentWaypointIndex: number | null; // Index of the waypoint the drone is *currently flying towards*
+    currentSegmentId: string | null;
+    lastError?: string;
+    totalDistanceCovered: number; // meters
+    estimatedTimeRemaining: number; // seconds
+    connectionOk: boolean; // Overall connection health to drone/backend ROS bridge
+    rosBridgeConnected: boolean; // Specific status of websocket connection
+}
+
 // Define action types
 type MissionAction = 
   | { type: 'SET_MISSION'; payload: Mission }
   | { type: 'CREATE_MISSION'; payload: { name: string; region: Region } }
+  | { type: 'SET_MISSIONS'; payload: Mission[] }
+  | { type: 'SET_ACTIVE_MISSION'; payload: string }
   | { type: 'SELECT_WAYPOINT'; payload: Waypoint | null }
   | { type: 'SELECT_PATH_SEGMENT'; payload: PathSegment | null }
   | { type: 'ADD_WAYPOINT'; payload: Waypoint }
@@ -148,7 +202,7 @@ type MissionAction =
   | { type: 'TOGGLE_DRONE_VISIBILITY' }
   | { type: 'TOGGLE_CAMERA_FRUSTUM_VISIBILITY' }
   | { type: 'TOGGLE_GCP_VISIBILITY'; payload: string }
-  | { type: 'SET_ACTIVE_CONTROL_PANE'; payload: 'pre-checks' | 'build-scene' | 'mission-planning' }
+  | { type: 'SET_ACTIVE_CONTROL_PANE'; payload: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation' }
   | { type: 'UPDATE_SCENE_SETTINGS'; payload: Partial<SceneSettings> }
   | { type: 'SET_HARDWARE'; payload: Partial<HardwareState> }
   | { type: 'UPDATE_HARDWARE_FIELD'; payload: { field: keyof HardwareState; value: any } }
@@ -162,11 +216,21 @@ type MissionAction =
   // Actions for mission areas
   | { type: 'ADD_MISSION_AREA'; payload: MissionArea }
   | { type: 'REMOVE_MISSION_AREA'; payload: string }
-  | { type: 'UPDATE_MISSION_AREA'; payload: Partial<MissionArea> & { id: string } };
+  | { type: 'UPDATE_MISSION_AREA'; payload: Partial<MissionArea> & { id: string } }
+  | { type: 'TOGGLE_PATH_SEGMENT_SELECTION'; payload: string }
+  | { type: 'SET_TRANSFORM_OBJECT_ID'; payload: string | null }
+  // --- NEW ROS/Live Actions ---
+  | { type: 'UPDATE_TELEMETRY'; payload: RealtimeTelemetry }
+  | { type: 'UPDATE_SENSOR_STATUS'; payload: Partial<LiveSensorStatus> } // Allow partial updates for specific sensors
+  | { type: 'UPDATE_EXECUTION_STATUS'; payload: Partial<MissionExecutionStatus> }
+  | { type: 'SET_ROSBRIDGE_CONNECTION'; payload: { connected: boolean } }
+  | { type: 'LOAD_OPERATIONAL_DEFAULTS'; payload: { profile: string } } // e.g., profile: 'alta-x-p1-os0'
 
 // Update the MissionState interface
 export interface MissionState {
-  currentMission: Mission | null;
+  missions: Mission[]; // Array to hold all missions
+  currentMission: Mission | null; // The currently active/selected mission
+  selectedPathSegmentIds: string[]; // IDs of segments selected for viewing/simulation
   selectedWaypoint: Waypoint | null;
   selectedPathSegment: PathSegment | null;
   models: MissionModel[];
@@ -196,7 +260,7 @@ export interface MissionState {
   drawingMode: 'polygon' | null;
   polygonPoints: LocalCoord[];
   polygonPreviewPoint: LocalCoord | null;
-  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning';
+  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation';
   isSelectingTakeoffPoint: boolean; // Added state for selection mode
   isDroneVisible: boolean; // <-- Add drone visibility state
   isCameraFrustumVisible: boolean; // <-- Add camera visibility state
@@ -204,10 +268,17 @@ export interface MissionState {
   sceneSettings: SceneSettings; // <-- Add scene settings state
   hardware: HardwareState | null; // <-- Add hardware state
   sceneObjects: SceneObject[]; // <-- Add scene objects array
-  editingSceneObjectId: string | null; // ADDED: Track object being edited
-  selectedFace: SelectedFaceInfo | null; // ADDED: Track selected face information
-  isFaceSelectionModeActive: boolean; // ADDED: Track whether face selection mode is active
+  editingSceneObjectId: string | null;
+  selectedFace: SelectedFaceInfo | null;
+  isFaceSelectionModeActive: boolean;
   missionAreas: MissionArea[]; // NEW: Track mission areas created from faces
+  transformObjectId: string | null;
+
+  // --- NEW SECTIONS for Live Operations ---
+  realtimeTelemetry: RealtimeTelemetry | null;
+  liveSensorStatus: LiveSensorStatus | null; // Will hold status for multiple sensors
+  missionExecutionStatus: MissionExecutionStatus | null;
+  // --- End NEW SECTIONS ---
 }
 
 // Default Scene Settings
@@ -220,7 +291,7 @@ const defaultLightSceneSettings: SceneSettings = {
     gridColorCenterLine: '#888888',
     gridColorGrid: '#cccccc',
     gridVisible: true,
-    gridFadeDistance: 25,
+    gridFadeDistance: 85,
     ambientLightIntensity: 0.6,
     directionalLightIntensity: 1.0,
     skyEnabled: true,
@@ -237,7 +308,7 @@ const defaultDarkSceneSettings: SceneSettings = {
     gridColorCenterLine: '#333333',
     gridColorGrid: '#1e1e1e',
     gridVisible: true,
-    gridFadeDistance: 25,
+    gridFadeDistance: 85,
     ambientLightIntensity: 0.25, // Reduced ambient in dark
     directionalLightIntensity: 0.7,
     skyEnabled: true,
@@ -307,6 +378,7 @@ const DEFAULT_DEV_MISSION: Mission = {
         climbSpeed: 2.5,
         failsafeAction: 'RTL',
         missionEndAction: 'RTL',
+        climbToAltitude: 40 // Add default value (e.g., 40m AGL)
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -317,7 +389,9 @@ const DEFAULT_DEV_MISSION: Mission = {
 const DEFAULT_FOCUS_DISTANCE_FT = 20; // Added default constant
 
 const initialState: MissionState = {
-  currentMission: null,
+  missions: [DEFAULT_DEV_MISSION], // Initialize with the default mission
+  currentMission: DEFAULT_DEV_MISSION, // Start with the default mission active
+  selectedPathSegmentIds: [], // Initialize as empty
   selectedWaypoint: null,
   selectedPathSegment: null,
   models: [],
@@ -330,48 +404,71 @@ const initialState: MissionState = {
     totalWaypointsInSegment: 0,
   },
   isLive: false,
-  viewMode: 'CESIUM',
+  viewMode: 'LOCAL_3D',
   isEditing: false,
   selectedPoint: null,
   tempRegion: null,
-  regionName: 'New Mission Area',
+  regionName: '',
   drawingMode: null,
   polygonPoints: [],
   polygonPreviewPoint: null,
-  activeControlPane: 'mission-planning',
+  activeControlPane: 'mission-planning', // Default to mission planning
   isSelectingTakeoffPoint: false,
-  isDroneVisible: true,
-  isCameraFrustumVisible: true,
+  isDroneVisible: true, 
+  isCameraFrustumVisible: false,
   hiddenGcpIds: [],
-  sceneSettings: {
-      gridSize: 200,
-      gridDivisions: 20,
-      gridUnit: 'meters', // Default to meters
-      fov: 50,
-      backgroundColor: '#121212', // Default to dark theme initially
-      gridColorCenterLine: '#333333',
-      gridColorGrid: '#1e1e1e',
-      gridVisible: true,
-      gridFadeDistance: 25,
-      ambientLightIntensity: 0.25,
-      directionalLightIntensity: 0.7,
-      skyEnabled: true,
-      sunPosition: [100, 10, 100],
-      axesVisible: true,
-  },
-  hardware: null,
+  sceneSettings: defaultDarkSceneSettings, // Initialize with dark theme defaults
+  hardware: null, // Initialize hardware as null
   sceneObjects: [],
   editingSceneObjectId: null,
   selectedFace: null,
   isFaceSelectionModeActive: false,
-  missionAreas: [], // Initialize with empty array
+  missionAreas: [],
+  transformObjectId: null,
+
+  // --- Initialize NEW SECTIONS ---
+  realtimeTelemetry: null,
+  liveSensorStatus: {
+      // Default structure assumes one primary camera and lidar initially
+      // These IDs should match what the backend ROS nodes use
+      camera: { id: 'primary_camera', connected: false },
+      lidar: { id: 'primary_lidar', connected: false }
+      // Add placeholders if more sensors are standard
+  },
+  missionExecutionStatus: {
+      state: 'disconnected', // Start as disconnected
+      currentWaypointIndex: null,
+      currentSegmentId: null,
+      lastError: undefined,
+      totalDistanceCovered: 0,
+      estimatedTimeRemaining: 0,
+      connectionOk: false, // Assume backend connection is down initially
+      rosBridgeConnected: false, // Assume websocket is down initially
+  },
+  // --- End Initialize NEW SECTIONS ---
 };
 
 // Create the reducer
 function missionReducer(state: MissionState, action: MissionAction): MissionState {
-  // FIX: Log payload only if it exists
-  console.log(`[MissionContext] Action: ${action.type}`, ('payload' in action) ? action.payload : '(no payload)'); 
-  
+  // Safely log payload only if it exists
+  console.log(
+    '[MissionReducer] Action:', 
+    action.type, 
+    ('payload' in action ? action.payload : '(no payload)')
+  );
+
+  // Helper to update both currentMission and the missions array
+  const updateMissionState = (updatedMission: Mission | null): Partial<MissionState> => {
+    if (!updatedMission) {
+      return { currentMission: null }; // Handle case where mission becomes null
+    }
+    // Update the mission in the missions array using ID
+    const newMissions = state.missions.map(m => 
+      m.id === updatedMission.id ? updatedMission : m // Use ID
+    );
+    return { currentMission: updatedMission, missions: newMissions };
+  };
+
   switch (action.type) {
     case 'SET_MISSION':
       return {
@@ -427,7 +524,8 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
           rtlAltitude: 50, // Meters
           climbSpeed: 2.5, // m/s
           failsafeAction: 'RTL', // Default action on failsafe
-          missionEndAction: 'RTL' // Default action at mission end
+          missionEndAction: 'RTL', // Default action at mission end
+          climbToAltitude: 40 // Add default here too
         }
       };
       
@@ -441,6 +539,27 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
         regionName: 'New Mission Area',
       };
       return nextState;
+    }
+    
+    case 'SET_MISSIONS': // Action to load/replace all missions
+        // Use ID for comparison
+        const currentStillExists = state.currentMission && action.payload.some(m => m.id === state.currentMission!.id);
+        const newCurrent = currentStillExists ? state.currentMission : (action.payload.length > 0 ? action.payload[0] : null);
+        return { ...state, missions: action.payload, currentMission: newCurrent };
+
+    case 'SET_ACTIVE_MISSION': { // Handle selecting an active mission using ID
+        const newActiveMission = state.missions.find(m => m.id === action.payload);
+        if (newActiveMission) {
+            // Reset selected segments when changing missions
+            return { 
+              ...state, 
+              currentMission: newActiveMission, 
+              selectedPathSegmentIds: [], // Reset selection
+              selectedWaypoint: null, // Also reset waypoint/segment selection state
+              selectedPathSegment: null, 
+            };
+        }
+        return state; // If ID not found, return current state
     }
     
     case 'SELECT_WAYPOINT':
@@ -559,15 +678,20 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     
     case 'ADD_PATH_SEGMENT': {
       if (!state.currentMission) return state;
+      const newSegment = action.payload;
+      const updatedMission = {
+        ...state.currentMission,
+        pathSegments: [...state.currentMission.pathSegments, newSegment],
+        updatedAt: new Date() // Also update mission timestamp
+      };
+      // Automatically select the new segment for viewing
+      const newSelectedIds = [...state.selectedPathSegmentIds, newSegment.id];
       
-      return {
-        ...state,
-        currentMission: {
-          ...state.currentMission,
-          pathSegments: [...state.currentMission.pathSegments, action.payload],
-          updatedAt: new Date()
-        },
-        selectedPathSegment: action.payload
+      return { 
+        ...state, 
+        ...updateMissionState(updatedMission), // Use helper to update missions array too
+        selectedPathSegment: newSegment, // Optionally select the new segment
+        selectedPathSegmentIds: newSelectedIds // Add to visible segments
       };
     }
     
@@ -594,19 +718,21 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     
     case 'DELETE_PATH_SEGMENT': {
       if (!state.currentMission) return state;
+      const segmentIdToDelete = action.payload;
+      const updatedSegments = state.currentMission.pathSegments.filter(seg => seg.id !== segmentIdToDelete);
+      const updatedMission = { ...state.currentMission, pathSegments: updatedSegments, updatedAt: new Date() };
       
-      const updatedSegments = state.currentMission.pathSegments.filter(
-        segment => segment.id !== action.payload
-      );
+      // Remove from selection if it was selected
+      const newSelectedIds = state.selectedPathSegmentIds.filter(id => id !== segmentIdToDelete);
       
-      return {
-        ...state,
-        currentMission: {
-          ...state.currentMission,
-          pathSegments: updatedSegments,
-          updatedAt: new Date()
-        },
-        selectedPathSegment: null
+      // If the deleted segment was the *single* selectedPathSegment, deselect it
+      const selectedSegmentUpdate = state.selectedPathSegment?.id === segmentIdToDelete ? { selectedPathSegment: null } : {};
+      
+      return { 
+        ...state, 
+        ...updateMissionState(updatedMission),
+        selectedPathSegmentIds: newSelectedIds, 
+        ...selectedSegmentUpdate 
       };
     }
     
@@ -753,19 +879,22 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     
     case 'SET_SAFETY_PARAMS': {
       if (!state.currentMission) return state;
-      // Ensure the final object type is asserted correctly
+      // Ensure climbToAltitude is handled if present in payload
       const updatedSafetyParams = {
-          ...state.currentMission.safetyParams, // Keep existing params
-          ...action.payload // Overwrite with new partial params
-      } as SafetyParams; // Assert the final type
+          ...state.currentMission.safetyParams,
+          ...action.payload 
+      } as SafetyParams;
       
-      return {
-        ...state,
-        currentMission: {
-          ...state.currentMission,
-          safetyParams: updatedSafetyParams,
-          updatedAt: new Date()
-        }
+      // Update the specific mission in the missions array
+      const updatedMission = {
+        ...state.currentMission,
+        safetyParams: updatedSafetyParams,
+        updatedAt: new Date()
+      };
+      
+      return { 
+        ...state, 
+        ...updateMissionState(updatedMission) // Use helper
       };
     }
     
@@ -925,10 +1054,16 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
       };
     
     case 'SET_ACTIVE_CONTROL_PANE':
-      return {
-        ...state,
-        activeControlPane: action.payload,
-      };
+      // Ensure payload is one of the allowed types
+      const validPanes: MissionState['activeControlPane'][] = ['pre-checks', 'build-scene', 'mission-planning', 'live-operation'];
+      if (validPanes.includes(action.payload as any)) {
+        return {
+          ...state,
+          activeControlPane: action.payload as MissionState['activeControlPane'],
+        };
+      }
+      console.warn(`Invalid control pane value: ${action.payload}`);
+      return state;
     
     // --- Drone Visibility --- 
     case 'TOGGLE_DRONE_VISIBILITY':
@@ -1088,9 +1223,15 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
 
       console.log("[MissionContext] Reducer: SET_HARDWARE - Final updatedHardware state:", updatedHardware);
 
+      // --- Determine frustum visibility based on updated hardware --- 
+      const newFrustumVisibility = !!(updatedHardware.camera && updatedHardware.lens);
+      console.log(`[MissionContext] Reducer: SET_HARDWARE - Setting frustum visibility to: ${newFrustumVisibility}`);
+      // --- End determination ---
+
       return { 
         ...state, 
-        hardware: updatedHardware as HardwareState // Assert final type
+        hardware: updatedHardware as HardwareState, // Assert final type
+        isCameraFrustumVisible: newFrustumVisibility // <-- Set visibility state
       };
     }
     
@@ -1156,7 +1297,16 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
              updatedHardware.calculatedFov = undefined;
         }
 
-        return { ...state, hardware: updatedHardware };
+        // --- Determine frustum visibility based on updated hardware --- 
+        const newFrustumVisibility = !!(updatedHardware.camera && updatedHardware.lens);
+         console.log(`[MissionContext] Reducer: UPDATE_HARDWARE_FIELD (${field}) - Setting frustum visibility to: ${newFrustumVisibility}`);
+        // --- End determination ---
+
+        return { 
+          ...state, 
+          hardware: updatedHardware, 
+          isCameraFrustumVisible: newFrustumVisibility // <-- Set visibility state
+        };
     }
     
     case 'ADD_SCENE_OBJECT': {
@@ -1200,8 +1350,8 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
       return {
         ...state,
         selectedFace: action.payload,
-        // When a face is selected, automatically disable face selection mode
-        isFaceSelectionModeActive: action.payload !== null
+        // Optionally turn off selection mode when a face is successfully selected
+        isFaceSelectionModeActive: action.payload ? false : state.isFaceSelectionModeActive 
       };
     
     case 'LOAD_MISSION': {
@@ -1210,11 +1360,12 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     }
     
     case 'TOGGLE_FACE_SELECTION_MODE':
+      // When turning selection ON, clear any previously selected face
+      const clearSelectedFace = action.payload ? { selectedFace: null } : {};
       return {
         ...state,
         isFaceSelectionModeActive: action.payload,
-        // Clear selected face when disabling face selection mode
-        ...(action.payload === false ? { selectedFace: null } : {})
+        ...clearSelectedFace
       };
     
     case 'ADD_MISSION_AREA':
@@ -1239,6 +1390,100 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
         )
       };
     
+    case 'TOGGLE_PATH_SEGMENT_SELECTION': {
+        const segmentId = action.payload;
+        
+        // Validate that the segment exists in the current mission first
+        if (!state.currentMission || !state.currentMission.pathSegments.some(segment => segment.id === segmentId)) {
+            console.warn(`Cannot toggle selection for segment ID that doesn't exist: ${segmentId}`);
+            return state; // Return current state without changes
+        }
+        
+        const isSelected = state.selectedPathSegmentIds.includes(segmentId);
+        let newSelectedIds;
+        if (isSelected) {
+            newSelectedIds = state.selectedPathSegmentIds.filter(id => id !== segmentId);
+        } else {
+            newSelectedIds = [...state.selectedPathSegmentIds, segmentId];
+        }
+        return {
+            ...state,
+            selectedPathSegmentIds: newSelectedIds,
+        };
+    }
+    
+    case 'SET_TRANSFORM_OBJECT_ID': {
+        return { ...state, transformObjectId: action.payload };
+    }
+
+    // --- NEW Reducer Cases for ROS/Live Data ---
+
+    case 'UPDATE_TELEMETRY':
+        // Simple update, assumes payload is the full telemetry state
+        return { ...state, realtimeTelemetry: action.payload };
+
+    case 'UPDATE_SENSOR_STATUS': {
+        // Deep merge partial updates for sensors
+        // Assumes payload might contain updates for EITHER camera or lidar
+        const updatedStatus: LiveSensorStatus = {
+            // Important: Carry over the existing state for sensors *not* in the payload
+            camera: { 
+                ...state.liveSensorStatus?.camera,
+                ...(action.payload.camera ?? {})
+            },
+            lidar: { 
+                ...state.liveSensorStatus?.lidar, 
+                ...(action.payload.lidar ?? {})
+            },
+            // Extend this pattern if more sensor types are added
+        } as LiveSensorStatus; // Assert type after potential partial merge
+        return { ...state, liveSensorStatus: updatedStatus };
+    }
+
+    case 'UPDATE_EXECUTION_STATUS': {
+        // Merge partial updates into the existing execution status
+        const updatedStatus: MissionExecutionStatus = {
+            ...state.missionExecutionStatus!,
+            ...action.payload, // Overwrite properties provided in payload
+        };
+        return { ...state, missionExecutionStatus: updatedStatus };
+    }
+
+    case 'SET_ROSBRIDGE_CONNECTION': {
+        const isConnected = action.payload.connected;
+        return {
+            ...state,
+            missionExecutionStatus: {
+                ...state.missionExecutionStatus!,
+                rosBridgeConnected: isConnected,
+                // If disconnecting, maybe update overall state?
+                state: isConnected ? state.missionExecutionStatus!.state : 'disconnected',
+                lastError: isConnected ? state.missionExecutionStatus!.lastError : 'ROSBridge disconnected',
+            },
+            // Optionally reset sensor status/telemetry if websocket disconnects
+            ...(!isConnected && {
+                liveSensorStatus: {
+                    camera: { ...state.liveSensorStatus!.camera, connected: false },
+                    lidar: { ...state.liveSensorStatus!.lidar, connected: false }
+                },
+                realtimeTelemetry: null
+             })
+        };
+    }
+
+    case 'LOAD_OPERATIONAL_DEFAULTS': {
+        // TODO: Implement logic to fetch/load defaults based on profile name
+        // This might involve setting specific hardware IDs, safety params, etc.
+        // For now, just log it.
+        console.log(`[MissionReducer] TODO: Load defaults for profile: ${action.payload.profile}`);
+        // Example: You might fetch config from an API or file here
+        // const defaults = await fetchDefaults(action.payload.profile);
+        // dispatch({ type: 'SET_HARDWARE', payload: defaults.hardware });
+        // dispatch({ type: 'SET_SAFETY_PARAMS', payload: defaults.safetyParams });
+        return state; // Placeholder
+    }
+    // --- End NEW Reducer Cases ---
+
     default:
       return state;
   }
@@ -1307,6 +1552,8 @@ export const MissionProvider: React.FC<MissionProviderProps> = ({ children }) =>
         }
     }, [appMode, state.currentMission, state.hardware, dispatch]); // Add state.hardware dependency
     // --- End Load Default Mission Effect ---
+
+    // TODO LATER: Add useEffect here for ROS connection management using roslibjs
 
     return (
         <MissionContext.Provider value={{ state, dispatch }}>

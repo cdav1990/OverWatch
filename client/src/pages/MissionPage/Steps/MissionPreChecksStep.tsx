@@ -281,10 +281,10 @@ const MissionPreChecksStep: React.FC = () => {
 
             {/* --- MAVLink Safety Parameters --- */}
             <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Safety Parameters</Typography>
-             <Grid container spacing={3}> {/* Increased spacing slightly */} 
+             <Grid container spacing={3}>
                  
-                 {/* RTL Altitude */} 
-                 <Grid item xs={12}> 
+                 {/* RTL Altitude */}
+                 <Grid size={{ xs: 12 }}> 
                     <Typography variant="body2" gutterBottom id="rtl-altitude-slider-label">
                         Return-To-Launch Altitude (ft)
                     </Typography>
@@ -306,8 +306,37 @@ const MissionPreChecksStep: React.FC = () => {
                     <Typography variant="caption" display="block" sx={{mt:.5}}>Altitude relative to takeoff for RTL.</Typography>
                  </Grid>
 
-                 {/* Climb Speed - Keep in m/s as it's a velocity */} 
-                 <Grid item xs={12}> 
+                 {/* --- Add Climb To Altitude Slider --- */}
+                 <Grid size={{ xs: 12 }}> 
+                    <Typography variant="body2" gutterBottom id="climb-to-altitude-slider-label">
+                        Mission Start Altitude (ft AGL)
+                    </Typography>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                        <Slider
+                            aria-labelledby="climb-to-altitude-slider-label"
+                            // Get value from context, convert meters to feet, provide default
+                            value={metersToFeet(currentMission?.safetyParams?.climbToAltitude ?? 40)} 
+                            onChange={(event, newValue) => {
+                                // Convert feet back to meters before dispatching
+                                const valueMeters = feetToMeters(newValue as number);
+                                handleSafetyParamChange('climbToAltitude', valueMeters);
+                            }}
+                            min={30} // Example min
+                            max={650} // Example max
+                            step={10}
+                            valueLabelDisplay="auto" 
+                            sx={{ flexGrow: 1 }}
+                        />
+                        <Typography variant="body2" sx={{ minWidth: '60px', textAlign: 'right' }}>
+                            {metersToFeet(currentMission?.safetyParams?.climbToAltitude ?? 40).toFixed(0)} ft
+                        </Typography>
+                    </Stack>
+                    <Typography variant="caption" display="block" sx={{mt:.5}}>Altitude relative to takeoff before first mission waypoint.</Typography>
+                 </Grid>
+                 {/* --- End Climb To Altitude --- */}
+
+                 {/* Climb Speed */}
+                 <Grid size={{ xs: 12 }}> 
                      <Typography variant="body2" gutterBottom id="climb-speed-slider-label">
                          Default Climb Speed (m/s)
                      </Typography>
@@ -326,8 +355,8 @@ const MissionPreChecksStep: React.FC = () => {
                      </Stack>
                  </Grid>
 
-                 {/* Failsafe Action */} 
-                 <Grid item xs={12} sm={6}> 
+                 {/* Failsafe Action */}
+                 <Grid size={{ xs: 12, sm: 6 }}> 
                     <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                          <InputLabel id="failsafe-action-label">Failsafe Action</InputLabel> {/* Added id */} 
                          <Select
@@ -343,8 +372,8 @@ const MissionPreChecksStep: React.FC = () => {
                      </FormControl>
                  </Grid>
 
-                 {/* Mission End Action */} 
-                 <Grid item xs={12} sm={6}> 
+                 {/* Mission End Action */}
+                 <Grid size={{ xs: 12, sm: 6 }}> 
                      <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                          <InputLabel id="mission-end-action-label">Mission End Action</InputLabel> {/* Added id */} 
                          <Select

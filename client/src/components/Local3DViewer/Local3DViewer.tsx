@@ -5,15 +5,17 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { Canvas } from '@react-three/fiber';
 import { Suspense } from 'react';
 import { useMission } from '../../context/MissionContext';
+import { useThreeJSState } from '../../context/ThreeJSStateContext';
 import { LocalCoord } from '../../types/mission';
 import DronePositionControlPanel from '../DronePositionControlPanel/DronePositionControlPanel';
 import HardwareVisualizationSettings from '../HardwareVisualizationSettings/HardwareVisualizationSettings';
 import AdvancedSceneSettings from '../SceneControls/AdvancedSceneSettings';
 import SceneObjectEditModal from './modals/SceneObjectEditModal';
-// Import from the index.ts file since it exports MissionScene
 import { MissionScene } from './';
-import MissionAreaIndicator from './indicators/MissionAreaIndicator';
-import HighlightFaceIndicator from './indicators/HighlightFaceIndicator';
+import ThreeJSOptimizer from './ThreeJSOptimizer';
+
+// Import a CSS module for the transform controls overlay
+import './transformControlsOverlay.css';
 
 // Define props for Local3DViewer
 interface Local3DViewerProps {
@@ -61,6 +63,7 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
   liveDroneRotation 
 }) => {
   const { state, dispatch } = useMission();
+  const { forceRerender } = useThreeJSState();
   const { 
     sceneSettings, 
     editingSceneObjectId, 
@@ -98,28 +101,34 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
       setManualDronePosition(actualCurrentDronePosition);
     }
     setIsPositionPanelOpen(!isPositionPanelOpen);
+    forceRerender();
   };
 
   const handleManualPositionChange = (newPosition: LocalCoord) => {
     setManualDronePosition(newPosition);
+    forceRerender();
   };
 
   const handleManualCameraFollowChange = (follows: boolean) => {
     setManualCameraFollow(follows);
+    forceRerender();
   };
 
   // Render the main component
   return (
-    <Paper elevation={0} sx={{ 
-      height: height,
-      position: 'relative', 
-      overflow: 'hidden', 
-      borderRadius: 0,
-      backgroundColor: sceneSettings.backgroundColor, 
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
+    <Paper 
+      elevation={0} 
+      sx={{ 
+        height: height,
+        position: 'relative', 
+        overflow: 'hidden', 
+        borderRadius: 0,
+        backgroundColor: sceneSettings.backgroundColor, 
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column'
+      }}
+    >
       {/* Settings buttons */}
       <MuiBox sx={{ 
         position: 'absolute', 
@@ -130,7 +139,10 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
         gap: 1
       }}>
         <IconButton 
-          onClick={() => setIsAdvancedSettingsPanelOpen(prev => !prev)}
+          onClick={() => {
+            setIsAdvancedSettingsPanelOpen(prev => !prev);
+            forceRerender();
+          }}
           sx={{ 
             bgcolor: 'rgba(0,0,0,0.5)', 
             color: 'white',
@@ -141,7 +153,10 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
           <SettingsIcon />
         </IconButton>
         <IconButton 
-          onClick={() => setIsHardwareSettingsPanelOpen(prev => !prev)}
+          onClick={() => {
+            setIsHardwareSettingsPanelOpen(prev => !prev);
+            forceRerender();
+          }}
           sx={{ 
             bgcolor: 'rgba(0,0,0,0.5)', 
             color: isCameraFrustumVisible ? '#4fc3f7' : 'white',
@@ -153,17 +168,21 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
         </IconButton>
       </MuiBox>
       
-      {/* 3D Canvas */}
+      {/* 3D Canvas with optimized settings */}
       <Canvas 
         shadows 
         camera={{ 
           position: [30, 30, 30],
           fov: sceneSettings.fov
         }}
-        onCreated={({ gl }) => {
-          // Configure renderer for better performance
-          gl.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
-          gl.setClearColor(sceneSettings.backgroundColor);
+        dpr={[1, 2]} // Limit pixel ratio for better performance
+        performance={{ min: 0.5 }} // Allow frame rate to drop for performance
+        gl={{ 
+          antialias: true,
+          alpha: false, // Disable alpha for performance
+          stencil: false, // Disable stencil for performance
+          depth: true, // Keep depth for proper rendering
+          powerPreference: 'high-performance'
         }}
       >
         <Suspense fallback={
@@ -177,14 +196,16 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
           </MuiBox>
         }>
           <ErrorBoundary>
-            <MissionScene 
-              liveDronePosition={liveDronePosition} 
-              liveDroneRotation={liveDroneRotation}
-              manualDronePosition={manualDronePosition} 
-              onDroneDoubleClick={handleDroneDoubleClick} 
-              cameraFollowsDrone={manualCameraFollow} 
-              visualizationSettings={hardwareVisualizationSettings}
-            />
+            <ThreeJSOptimizer>
+              <MissionScene 
+                liveDronePosition={liveDronePosition} 
+                liveDroneRotation={liveDroneRotation}
+                manualDronePosition={manualDronePosition} 
+                onDroneDoubleClick={handleDroneDoubleClick} 
+                cameraFollowsDrone={manualCameraFollow} 
+                visualizationSettings={hardwareVisualizationSettings}
+              />
+            </ThreeJSOptimizer>
           </ErrorBoundary>
         </Suspense>
       </Canvas>
@@ -192,7 +213,10 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
       {/* Panels and modals */}
       <DronePositionControlPanel
         isOpen={isPositionPanelOpen}
-        onClose={() => setIsPositionPanelOpen(false)}
+        onClose={() => {
+          setIsPositionPanelOpen(false);
+          forceRerender();
+        }}
         initialPosition={manualDronePosition || actualCurrentDronePosition}
         onPositionChange={handleManualPositionChange}
         initialCameraFollow={manualCameraFollow}
@@ -201,25 +225,56 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
 
       <HardwareVisualizationSettings 
         isOpen={isHardwareSettingsPanelOpen}
-        onClose={() => setIsHardwareSettingsPanelOpen(false)}
-        onVisualizationSettingsChange={setHardwareVisualizationSettings}
+        onClose={() => {
+          setIsHardwareSettingsPanelOpen(false);
+          forceRerender();
+        }}
+        onVisualizationSettingsChange={(settings) => {
+          setHardwareVisualizationSettings(settings);
+          forceRerender();
+        }}
       />
 
       <SceneObjectEditModal
         objectId={editingSceneObjectId || ''}
         open={!!editingSceneObjectId}
-        onClose={() => dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: null })}
+        onClose={() => {
+          dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: null });
+          forceRerender();
+        }}
       />
 
-      <AdvancedSceneSettings 
-        settings={sceneSettings}
-        onChange={(field, value) => dispatch({ 
-          type: 'UPDATE_SCENE_SETTINGS', 
-          payload: { [field]: value } 
-        })}
-        open={isAdvancedSettingsPanelOpen}
-        onClose={() => setIsAdvancedSettingsPanelOpen(false)}
-      />
+      {/* Advanced Scene Settings Panel - Positioned absolutely */}
+      <MuiBox 
+        sx={{ 
+          position: 'absolute', 
+          top: '55px', 
+          right: '10px', 
+          zIndex: 100,
+          display: isAdvancedSettingsPanelOpen ? 'block' : 'none',
+          transition: 'all 0.3s ease',
+          maxWidth: '450px',
+          width: '100%',
+          opacity: isAdvancedSettingsPanelOpen ? 1 : 0,
+          pointerEvents: isAdvancedSettingsPanelOpen ? 'auto' : 'none',
+        }}
+      >
+        <AdvancedSceneSettings 
+          settings={sceneSettings}
+          onChange={(field, value) => {
+            dispatch({ 
+              type: 'UPDATE_SCENE_SETTINGS', 
+              payload: { [field]: value } 
+            });
+            forceRerender();
+          }}
+          open={isAdvancedSettingsPanelOpen}
+          onClose={() => {
+            setIsAdvancedSettingsPanelOpen(false);
+            forceRerender();
+          }}
+        />
+      </MuiBox>
     </Paper>
   );
 };
