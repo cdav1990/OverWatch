@@ -15,7 +15,7 @@ import { styled } from '@mui/material/styles';
 import { metersToFeet } from '../../utils/sensorCalculations'; // Keep only conversion needed for display
 import { useMission } from '../../context/MissionContext'; // Keep context
 
-// Props definition - removed camera settings props
+// Props definition - updated to include camera controls
 interface DronePositionControlPanelProps {
     isOpen: boolean;
     onClose: () => void;
@@ -23,6 +23,14 @@ interface DronePositionControlPanelProps {
     onPositionChange: (newPosition: LocalCoord) => void;
     initialCameraFollow: boolean;
     onCameraFollowChange: (follows: boolean) => void;
+    // New camera control props
+    gimbalPitch?: number;
+    onGimbalPitchChange?: (pitch: number) => void;
+    cameraMode?: 'photo' | 'video';
+    onCameraModeChange?: (mode: 'photo' | 'video') => void;
+    isRecording?: boolean;
+    onTriggerCamera?: () => void;
+    onToggleRecording?: () => void;
 }
 
 // Styled components for consistent spacing and appearance
@@ -130,6 +138,60 @@ const SectionTitle = styled(Typography)(({ theme }) => ({
     letterSpacing: '0.5px',
 }));
 
+// Add new styled components for camera controls
+const ActionButton = styled(Box)(({ theme }) => ({
+    backgroundColor: 'rgba(40, 40, 40, 0.9)',
+    color: 'white',
+    padding: '5px 10px',
+    borderRadius: '3px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    transition: 'all 0.2s',
+    '&:hover': {
+        backgroundColor: 'rgba(60, 60, 60, 0.9)',
+        borderColor: 'rgba(255, 255, 255, 0.25)',
+    },
+}));
+
+const CameraModeButton = styled(Box)<{ active: boolean }>(({ theme, active }) => ({
+    backgroundColor: active ? 'rgba(79, 195, 247, 0.2)' : 'rgba(40, 40, 40, 0.9)',
+    color: active ? '#4fc3f7' : 'white',
+    padding: '5px 10px',
+    borderRadius: '3px',
+    flex: 1,
+    textAlign: 'center',
+    cursor: 'pointer',
+    border: active ? '1px solid rgba(79, 195, 247, 0.5)' : '1px solid rgba(255, 255, 255, 0.12)',
+    transition: 'all 0.2s',
+    '&:hover': {
+        backgroundColor: active ? 'rgba(79, 195, 247, 0.3)' : 'rgba(60, 60, 60, 0.9)',
+        borderColor: active ? 'rgba(79, 195, 247, 0.7)' : 'rgba(255, 255, 255, 0.25)',
+    },
+}));
+
+const RecordButton = styled(Box)<{ recording: boolean }>(({ theme, recording }) => ({
+    backgroundColor: recording ? 'rgba(244, 67, 54, 0.2)' : 'rgba(40, 40, 40, 0.9)',
+    color: recording ? '#f44336' : 'white',
+    padding: '5px 10px',
+    borderRadius: '3px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    cursor: 'pointer',
+    border: recording ? '1px solid rgba(244, 67, 54, 0.5)' : '1px solid rgba(255, 255, 255, 0.12)',
+    transition: 'all 0.2s',
+    '&:hover': {
+        backgroundColor: recording ? 'rgba(244, 67, 54, 0.3)' : 'rgba(60, 60, 60, 0.9)',
+        borderColor: recording ? 'rgba(244, 67, 54, 0.7)' : 'rgba(255, 255, 255, 0.25)',
+    },
+}));
+
 const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     isOpen,
     onClose,
@@ -137,10 +199,23 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     onPositionChange,
     initialCameraFollow,
     onCameraFollowChange,
+    // New camera control props with defaults
+    gimbalPitch = 0,
+    onGimbalPitchChange = () => {},
+    cameraMode = 'photo',
+    onCameraModeChange = () => {},
+    isRecording = false,
+    onTriggerCamera = () => {},
+    onToggleRecording = () => {},
 }) => {
     // Keep only the state we need
     const [position, setPosition] = useState<LocalCoord>(initialPosition);
     const [cameraFollows, setCameraFollows] = useState(initialCameraFollow);
+    
+    // Add new state for camera controls
+    const [currentGimbalPitch, setCurrentGimbalPitch] = useState<number>(gimbalPitch);
+    const [currentCameraMode, setCurrentCameraMode] = useState<'photo' | 'video'>(cameraMode);
+    const [currentlyRecording, setCurrentlyRecording] = useState<boolean>(isRecording);
 
     // Update internal state if initial props change
     useEffect(() => {
@@ -150,6 +225,19 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     useEffect(() => {
         setCameraFollows(initialCameraFollow);
     }, [initialCameraFollow]);
+    
+    // Update camera control states when props change
+    useEffect(() => {
+        setCurrentGimbalPitch(gimbalPitch);
+    }, [gimbalPitch]);
+    
+    useEffect(() => {
+        setCurrentCameraMode(cameraMode);
+    }, [cameraMode]);
+    
+    useEffect(() => {
+        setCurrentlyRecording(isRecording);
+    }, [isRecording]);
     
     // Add Escape key handling
     useEffect(() => {
@@ -178,6 +266,28 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
         setCameraFollows(checked);
         onCameraFollowChange(checked);
     };
+    
+    // New handlers for camera controls
+    const handleGimbalPitchChange = (_: Event, value: number | number[]) => {
+        const newValue = Array.isArray(value) ? value[0] : value;
+        setCurrentGimbalPitch(newValue);
+        onGimbalPitchChange(newValue);
+    };
+    
+    const handleCameraModeChange = (mode: 'photo' | 'video') => {
+        setCurrentCameraMode(mode);
+        onCameraModeChange(mode);
+    };
+    
+    const handleTriggerCamera = () => {
+        onTriggerCamera();
+    };
+    
+    const handleToggleRecording = () => {
+        const newRecordingState = !currentlyRecording;
+        setCurrentlyRecording(newRecordingState);
+        onToggleRecording();
+    };
 
     if (!isOpen) {
         return null;
@@ -186,6 +296,7 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     // Define reasonable min/max for sliders in METERS (adjust as needed)
     const positionRange = { min: -100, max: 100 }; // meters
     const heightRange = { min: 0, max: 100 }; // meters (Z - Up)
+    const pitchRange = { min: -90, max: 0 }; // degrees (looking down)
 
     return (
         <PanelContainer>
@@ -253,6 +364,63 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                 />
                 <ValueDisplay>{metersToFeet(position.z).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
             </ControlRow>
+
+            <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
+
+            {/* Camera Controls */}
+            <SectionTitle variant="subtitle2">Camera Controls</SectionTitle>
+            
+            {/* Gimbal Pitch Slider */}
+            <ControlRow>
+                <SliderLabel>Gimbal Pitch</SliderLabel>
+                <StyledSlider
+                    value={currentGimbalPitch}
+                    onChange={handleGimbalPitchChange}
+                    aria-labelledby="gimbal-pitch-slider"
+                    min={pitchRange.min}
+                    max={pitchRange.max}
+                    step={1}
+                    valueLabelDisplay="auto"
+                />
+                <ValueDisplay>{currentGimbalPitch}°</ValueDisplay>
+            </ControlRow>
+            
+            {/* Camera Mode Selection */}
+            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#ddd', mb: 1 }}>Camera Mode</Typography>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <CameraModeButton 
+                    active={currentCameraMode === 'photo'}
+                    onClick={() => handleCameraModeChange('photo')}
+                >
+                    Photo
+                </CameraModeButton>
+                <CameraModeButton 
+                    active={currentCameraMode === 'video'}
+                    onClick={() => handleCameraModeChange('video')}
+                >
+                    Video
+                </CameraModeButton>
+            </Box>
+            
+            {/* Camera Trigger Controls */}
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                {currentCameraMode === 'photo' ? (
+                    <ActionButton 
+                        onClick={handleTriggerCamera}
+                        sx={{ width: '100%' }}
+                    >
+                        Capture Photo
+                    </ActionButton>
+                ) : (
+                    <RecordButton 
+                        recording={currentlyRecording}
+                        onClick={handleToggleRecording}
+                        sx={{ width: '100%' }}
+                    >
+                        {currentlyRecording ? 'Stop Recording' : 'Start Recording'}
+                    </RecordButton>
+                )}
+            </Box>
 
             <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
 

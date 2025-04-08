@@ -55,12 +55,18 @@ export interface SceneSettings {
   skyEnabled: boolean;
   sunPosition: [number, number, number];
   axesVisible: boolean;
+  waterEnabled: boolean; // Toggle for water effect at ground level
+  showBelowGround: boolean; // Toggle for ability to view below ground plane
+  waterColor: string; // Color for water surface
+  waterOpacity: number; // Opacity of water (0-1)
+  waterWaveSpeed: number; // Speed of water waves animation
+  waterWaveScale: number; // Scale of the wave pattern
 }
 
 // Define Scene Object Type
 export interface SceneObject {
     id: string;
-    type: 'box' | 'model' | 'area'; // Add other types as needed (e.g., 'cylinder', 'polygon')
+    type: 'box' | 'model' | 'area' | 'ship'; // Add 'ship' type
     class?: 'obstacle' | 'neutral' | 'asset'; // ADDED: Object classification
     width?: number;   // Optional, might not apply to all types
     length?: number;  // Optional
@@ -70,6 +76,7 @@ export interface SceneObject {
     rotation?: LocalCoord; // Optional rotation
     url?: string;     // For models
     points?: LocalCoord[]; // For polygons/areas
+    realWorldLength?: number; // For accurate scaling of models (in feet)
     createdAt: string;
     source: string; // Where it originated (e.g., 'build-scene-ui', 'import')
 }
@@ -225,6 +232,9 @@ type MissionAction =
   | { type: 'UPDATE_EXECUTION_STATUS'; payload: Partial<MissionExecutionStatus> }
   | { type: 'SET_ROSBRIDGE_CONNECTION'; payload: { connected: boolean } }
   | { type: 'LOAD_OPERATIONAL_DEFAULTS'; payload: { profile: string } } // e.g., profile: 'alta-x-p1-os0'
+  | { type: 'SET_HEAVY_OPERATION'; payload: boolean }
+  | { type: 'START_HEAVY_OPERATION' }
+  | { type: 'END_HEAVY_OPERATION' }
 
 // Update the MissionState interface
 export interface MissionState {
@@ -245,6 +255,7 @@ export interface MissionState {
   isLive: boolean;
   viewMode: 'CESIUM' | 'LOCAL_3D';
   isEditing: boolean;
+  isPerformingHeavyOperation: boolean; // Flag for heavy computational operations
   // GEO page persistence
   selectedPoint: LatLng | null;
   tempRegion: {
@@ -283,7 +294,7 @@ export interface MissionState {
 
 // Default Scene Settings
 const defaultLightSceneSettings: SceneSettings = {
-    gridSize: 200,
+    gridSize: 400, // Doubled from 200 to 400 (200%)
     gridDivisions: 20,
     gridUnit: 'meters', // Default to meters
     fov: 50,
@@ -291,16 +302,22 @@ const defaultLightSceneSettings: SceneSettings = {
     gridColorCenterLine: '#888888',
     gridColorGrid: '#cccccc',
     gridVisible: true,
-    gridFadeDistance: 85,
+    gridFadeDistance: 400, // Doubled from 200 to 400 (200%)
     ambientLightIntensity: 0.6,
     directionalLightIntensity: 1.0,
     skyEnabled: true,
     sunPosition: [100, 10, 100],
     axesVisible: true,
+    waterEnabled: false, // Default water effect off
+    showBelowGround: false, // Default view below ground off
+    waterColor: '#4fc3f7', // Light blue for water
+    waterOpacity: 0.6, // Semi-transparent
+    waterWaveSpeed: 0.5, // Moderate wave speed
+    waterWaveScale: 1.0, // Default wave scale
 };
 
 const defaultDarkSceneSettings: SceneSettings = {
-    gridSize: 200,
+    gridSize: 400, // Doubled from 200 to 400 (200%)
     gridDivisions: 20,
     gridUnit: 'meters', // Default to meters
     fov: 50,
@@ -308,12 +325,18 @@ const defaultDarkSceneSettings: SceneSettings = {
     gridColorCenterLine: '#333333',
     gridColorGrid: '#1e1e1e',
     gridVisible: true,
-    gridFadeDistance: 85,
+    gridFadeDistance: 400, // Doubled from 200 to 400 (200%)
     ambientLightIntensity: 0.25, // Reduced ambient in dark
     directionalLightIntensity: 0.7,
     skyEnabled: true,
     sunPosition: [100, 10, 100], // Same sun position
     axesVisible: true,
+    waterEnabled: false, // Default water effect off
+    showBelowGround: false, // Default view below ground off
+    waterColor: '#0277bd', // Darker blue for water in dark mode
+    waterOpacity: 0.5, // Slightly less transparent in dark mode
+    waterWaveSpeed: 0.5, // Moderate wave speed
+    waterWaveScale: 1.0, // Default wave scale
 };
 
 const defaultGeckoSceneSettings: SceneSettings = {
@@ -322,6 +345,8 @@ const defaultGeckoSceneSettings: SceneSettings = {
     gridColorGrid: '#388E3C',
     backgroundColor: '#1B2631', // Darker blue/grey background
     axesVisible: true,
+    waterColor: '#00695c', // Teal water to match gecko theme
+    waterOpacity: 0.55, // Custom opacity
 };
 
 // --- >>> DEV MODE: Default Mission Data <<< ---
@@ -406,6 +431,7 @@ const initialState: MissionState = {
   isLive: false,
   viewMode: 'LOCAL_3D',
   isEditing: false,
+  isPerformingHeavyOperation: false, // Initialize as false
   selectedPoint: null,
   tempRegion: null,
   regionName: '',
@@ -1482,7 +1508,24 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
         // dispatch({ type: 'SET_SAFETY_PARAMS', payload: defaults.safetyParams });
         return state; // Placeholder
     }
-    // --- End NEW Reducer Cases ---
+
+    case 'START_HEAVY_OPERATION':
+      return {
+        ...state,
+        isPerformingHeavyOperation: true
+      };
+      
+    case 'END_HEAVY_OPERATION':
+      return {
+        ...state,
+        isPerformingHeavyOperation: false
+      };
+      
+    case 'SET_HEAVY_OPERATION':
+      return {
+        ...state,
+        isPerformingHeavyOperation: action.payload
+      };
 
     default:
       return state;
