@@ -361,12 +361,12 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
                 value={settings.gridFadeDistance}
                 onChange={handleSliderChange('gridFadeDistance')}
                 min={5}
-                max={100}
+                max={300}
                 step={1}
                 marks={[
                   { value: 5, label: '5' },
-                  { value: 50, label: '50' },
-                  { value: 100, label: '100' }
+                  { value: 150, label: '150' },
+                  { value: 300, label: '300' }
                 ]}
                 valueLabelDisplay="auto"
               />
@@ -419,6 +419,112 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
                     ),
                   }}
                 />
+              </Stack>
+            </Box>
+
+            <Divider sx={{ my: 2 }} />
+
+            <Box>
+              <SectionTitle>Ground & Water Settings</SectionTitle>
+              <Stack spacing={2}>
+                <FormControlLabel
+                  control={
+                    <Switch 
+                      checked={settings.showBelowGround}
+                      onChange={handleSwitchChange('showBelowGround')}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">Show Below Ground</Typography>
+                  }
+                />
+                
+                <FormControlLabel
+                  control={
+                    <Switch 
+                      checked={settings.waterEnabled}
+                      onChange={handleSwitchChange('waterEnabled')}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">Enable Water Effect</Typography>
+                  }
+                />
+
+                {settings.waterEnabled && (
+                  <Collapse in={settings.waterEnabled}>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                      <StyledTextField
+                        label="Water Color"
+                        value={settings.waterColor}
+                        onChange={handleColorChange('waterColor')}
+                        size="small"
+                        fullWidth
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <Box 
+                                sx={{ 
+                                  width: 16, 
+                                  height: 16, 
+                                  backgroundColor: settings.waterColor,
+                                  borderRadius: '2px',
+                                  border: '1px solid rgba(255,255,255,0.1)'
+                                }} 
+                              />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      
+                      <Box>
+                        <Typography variant="body2" gutterBottom>
+                          Water Opacity: {settings.waterOpacity.toFixed(2)}
+                        </Typography>
+                        <StyledSlider
+                          value={settings.waterOpacity}
+                          onChange={handleSliderChange('waterOpacity')}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          valueLabelDisplay="auto"
+                        />
+                      </Box>
+                      
+                      <Box>
+                        <Typography variant="body2" gutterBottom>
+                          Wave Speed: {settings.waterWaveSpeed.toFixed(1)}
+                        </Typography>
+                        <StyledSlider
+                          value={settings.waterWaveSpeed}
+                          onChange={handleSliderChange('waterWaveSpeed')}
+                          min={0}
+                          max={2}
+                          step={0.1}
+                          valueLabelDisplay="auto"
+                        />
+                      </Box>
+                      
+                      <Box>
+                        <Typography variant="body2" gutterBottom>
+                          Wave Scale: {settings.waterWaveScale.toFixed(1)}
+                        </Typography>
+                        <StyledSlider
+                          value={settings.waterWaveScale}
+                          onChange={handleSliderChange('waterWaveScale')}
+                          min={0.1}
+                          max={3}
+                          step={0.1}
+                          valueLabelDisplay="auto"
+                        />
+                      </Box>
+                    </Stack>
+                  </Collapse>
+                )}
               </Stack>
             </Box>
 
