@@ -7,11 +7,11 @@ import {
     Switch,
     FormControlLabel,
     TextField,
-    Grid,
     Paper,
-    Divider
+    Divider,
+    Grid
 } from '@mui/material';
-import { SceneSettings } from '../../context/MissionContext'; // Adjust path as needed
+import { SceneSettings } from '../Local3DViewer/types/SceneSettings';
 import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
 
 interface SceneSettingsPanelProps {
@@ -50,14 +50,14 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                 <Box>
                     <Typography variant="overline" display="block" gutterBottom>Grid</Typography>
                     <Divider sx={{ mb: 1.5 }} />
-                    <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12} sm={6}>
-                             <FormControlLabel
+                    <Grid container spacing={2}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControlLabel
                                 control={<Switch checked={settings.gridVisible} onChange={(e) => handleSwitchChange('gridVisible', e)} size="small" />}
                                 label={<Typography variant="body2">Visible</Typography>}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <Typography variant="body2" gutterBottom id="grid-size-label">
                                 Grid Scale: 300 meters (984 feet)
                             </Typography>
@@ -65,11 +65,11 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                 Fixed for consistent visualization
                             </Typography>
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <Typography variant="body2" gutterBottom id="grid-div-label">
                                 Divisions ({settings.gridDivisions})
                             </Typography>
-                             <Slider
+                            <Slider
                                 aria-labelledby="grid-div-label"
                                 value={settings.gridDivisions}
                                 onChange={(e, v) => handleSliderChange('gridDivisions', e, v)}
@@ -77,19 +77,19 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                 size="small"
                             />
                         </Grid>
-                         <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <Typography variant="body2" gutterBottom id="grid-fade-label">
                                 Fade Distance ({settings.gridFadeDistance})
                             </Typography>
-                             <Slider
+                            <Slider
                                 aria-labelledby="grid-fade-label"
                                 value={settings.gridFadeDistance}
                                 onChange={(e, v) => handleSliderChange('gridFadeDistance', e, v)}
-                                min={5} max={100} step={1}
+                                min={5} max={300} step={1}
                                 size="small"
                             />
                         </Grid>
-                         <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <TextField
                                 label="Center Line Color"
                                 value={settings.gridColorCenterLine}
@@ -100,7 +100,7 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                 InputLabelProps={{ shrink: true }}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <TextField
                                 label="Grid Line Color"
                                 value={settings.gridColorGrid}
@@ -114,11 +114,82 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                     </Grid>
                 </Box>
 
-                 {/* Scene Background */}
-                 <Box>
+                {/* Ground & Water Settings - NEW SECTION */}
+                <Box>
+                    <Typography variant="overline" display="block" gutterBottom>Ground & Water</Typography>
+                    <Divider sx={{ mb: 1.5 }} />
+                    <Grid container spacing={2}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControlLabel
+                                control={<Switch checked={settings.showBelowGround} onChange={(e) => handleSwitchChange('showBelowGround', e)} size="small" />}
+                                label={<Typography variant="body2">Show Below Ground</Typography>}
+                            />
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControlLabel
+                                control={<Switch checked={settings.waterEnabled} onChange={(e) => handleSwitchChange('waterEnabled', e)} size="small" />}
+                                label={<Typography variant="body2">Enable Water Effect</Typography>}
+                            />
+                        </Grid>
+                        {settings.waterEnabled && (
+                            <>
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                    <TextField
+                                        label="Water Color"
+                                        value={settings.waterColor}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleTextChange('waterColor', e)}
+                                        variant="outlined"
+                                        size="small"
+                                        fullWidth
+                                        InputLabelProps={{ shrink: true }}
+                                    />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                    <Typography variant="body2" gutterBottom id="water-opacity-label">
+                                        Water Opacity ({settings.waterOpacity.toFixed(2)})
+                                    </Typography>
+                                    <Slider
+                                        aria-labelledby="water-opacity-label"
+                                        value={settings.waterOpacity}
+                                        onChange={(e, v) => handleSliderChange('waterOpacity', e, v)}
+                                        min={0} max={1} step={0.05}
+                                        size="small"
+                                    />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                    <Typography variant="body2" gutterBottom id="water-wave-speed-label">
+                                        Wave Speed ({settings.waterWaveSpeed.toFixed(2)})
+                                    </Typography>
+                                    <Slider
+                                        aria-labelledby="water-wave-speed-label"
+                                        value={settings.waterWaveSpeed}
+                                        onChange={(e, v) => handleSliderChange('waterWaveSpeed', e, v)}
+                                        min={0} max={2} step={0.1}
+                                        size="small"
+                                    />
+                                </Grid>
+                                <Grid size={{ xs: 12, sm: 6 }}>
+                                    <Typography variant="body2" gutterBottom id="water-wave-scale-label">
+                                        Wave Scale ({settings.waterWaveScale.toFixed(2)})
+                                    </Typography>
+                                    <Slider
+                                        aria-labelledby="water-wave-scale-label"
+                                        value={settings.waterWaveScale}
+                                        onChange={(e, v) => handleSliderChange('waterWaveScale', e, v)}
+                                        min={0.1} max={3} step={0.1}
+                                        size="small"
+                                    />
+                                </Grid>
+                            </>
+                        )}
+                    </Grid>
+                </Box>
+
+                {/* Scene Background */}
+                <Box>
                     <Typography variant="overline" display="block" gutterBottom>Scene</Typography>
-                     <Divider sx={{ mb: 1.5 }} />
-                     <TextField
+                    <Divider sx={{ mb: 1.5 }} />
+                    <TextField
                         label="Background Color"
                         value={settings.backgroundColor}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleTextChange('backgroundColor', e)}
@@ -127,19 +198,18 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                         fullWidth
                         InputLabelProps={{ shrink: true }}
                     />
-                 </Box>
-
+                </Box>
 
                 {/* Lighting Settings */}
                 <Box>
                     <Typography variant="overline" display="block" gutterBottom>Lighting</Typography>
                     <Divider sx={{ mb: 1.5 }} />
-                    <Grid container spacing={2} alignItems="center">
-                         <Grid item xs={12} sm={6}>
+                    <Grid container spacing={2}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <Typography variant="body2" gutterBottom id="ambient-intensity-label">
                                 Ambient Intensity ({settings.ambientLightIntensity.toFixed(1)})
                             </Typography>
-                             <Slider
+                            <Slider
                                 aria-labelledby="ambient-intensity-label"
                                 value={settings.ambientLightIntensity}
                                 onChange={(e, v) => handleSliderChange('ambientLightIntensity', e, v)}
@@ -147,11 +217,11 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                 size="small"
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
-                             <Typography variant="body2" gutterBottom id="directional-intensity-label">
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            <Typography variant="body2" gutterBottom id="directional-intensity-label">
                                 Directional Intensity ({settings.directionalLightIntensity.toFixed(1)})
                             </Typography>
-                             <Slider
+                            <Slider
                                 aria-labelledby="directional-intensity-label"
                                 value={settings.directionalLightIntensity}
                                 onChange={(e, v) => handleSliderChange('directionalLightIntensity', e, v)}
@@ -159,15 +229,15 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                 size="small"
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <FormControlLabel
                                 control={<Switch checked={settings.skyEnabled} onChange={(e) => handleSwitchChange('skyEnabled', e)} size="small" />}
                                 label={<Typography variant="body2">Enable Sky/Sun</Typography>}
                             />
                         </Grid>
-                         <Grid item xs={12} sm={6} container spacing={1} alignItems="center">
-                            <Grid item xs={12}><Typography variant="body2">Sun Position</Typography></Grid>
-                            <Grid item xs={4}>
+                        <Grid size={{ xs: 12, sm: 6 }} container spacing={1}>
+                            <Grid size={{ xs: 12 }}><Typography variant="body2">Sun Position</Typography></Grid>
+                            <Grid size={{ xs: 4 }}>
                                 <TextField
                                     label="X" type="number" size="small" variant="outlined"
                                     value={settings.sunPosition[0]}
@@ -176,30 +246,30 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                                     InputLabelProps={{ shrink: true }}
                                 />
                             </Grid>
-                             <Grid item xs={4}>
+                            <Grid size={{ xs: 4 }}>
                                 <TextField
                                     label="Y" type="number" size="small" variant="outlined"
                                     value={settings.sunPosition[1]}
                                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSunPositionChange(1, e)}
                                     disabled={!settings.skyEnabled}
-                                     InputLabelProps={{ shrink: true }}
+                                    InputLabelProps={{ shrink: true }}
                                 />
                             </Grid>
-                             <Grid item xs={4}>
+                            <Grid size={{ xs: 4 }}>
                                 <TextField
                                     label="Z" type="number" size="small" variant="outlined"
                                     value={settings.sunPosition[2]}
                                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSunPositionChange(2, e)}
                                     disabled={!settings.skyEnabled}
-                                     InputLabelProps={{ shrink: true }}
+                                    InputLabelProps={{ shrink: true }}
                                 />
                             </Grid>
-                         </Grid>
+                        </Grid>
                     </Grid>
                 </Box>
 
-                 {/* Other Settings (like FOV) */}
-                 <Box>
+                {/* Other Settings (like FOV) */}
+                <Box>
                     <Typography variant="overline" display="block" gutterBottom>Camera</Typography>
                     <Divider sx={{ mb: 1.5 }} />
                     <Typography variant="body2" gutterBottom id="fov-label">
@@ -212,7 +282,7 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({ settings, onCha
                         min={20} max={120} step={1}
                         size="small"
                     />
-                 </Box>
+                </Box>
 
             </Stack>
         </Paper>

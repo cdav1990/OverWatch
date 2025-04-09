@@ -22,7 +22,8 @@ import {
     Paper,
     ToggleButton,
     ToggleButtonGroup,
-    Grid
+    Grid,
+    CircularProgress
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -32,6 +33,8 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ViewInArIcon from '@mui/icons-material/ViewInAr';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DirectionsBoatIcon from '@mui/icons-material/DirectionsBoat';
+import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
 import { useMission } from '../../../context/MissionContext';
 import { generateUUID } from '../../../utils/coordinateUtils';
 import { SceneObject } from '../../../context/MissionContext';
@@ -159,6 +162,39 @@ const StyledToggleButtonGroup = styled(ToggleButtonGroup)(({ theme }) => ({
     },
 }));
 
+// Define available pre-configured models
+interface PreConfiguredModel {
+    id: string;
+    name: string;
+    type: 'ship' | 'box' | 'model';
+    width?: number;
+    length?: number;
+    height?: number;
+    realWorldLength?: number; // Add real-world length in feet
+    scale?: number;
+    path?: string;
+}
+
+const PRE_CONFIGURED_MODELS: PreConfiguredModel[] = [
+    {
+        id: 'uss-gerald-ford',
+        name: 'USS Gerald R. Ford Aircraft Carrier',
+        type: 'ship',
+        // Real-world dimensions in feet, will be converted to meters when added
+        width: 256, // Real width in feet
+        length: 1106, // Real length in feet
+        height: 250, // Approximate height in feet including tower
+        realWorldLength: 1106, // Pass to model for accurate scaling
+    },
+    // Add more pre-configured models as needed
+];
+
+// Available model directories in public/models
+const AVAILABLE_MODELS = [
+    { id: 'uss_gerald_ford', name: 'USS Gerald R. Ford', path: '/models/uss_gerald_ford/Model/uss_gerald_r_ford.fbx', realWorldLength: 1106 },
+    { id: 'scene_gltf', name: 'Default Scene', path: '/models/scene.gltf' }
+];
+
 const BuildSceneStep: React.FC = () => {
     const { state, dispatch } = useMission();
     const { sceneObjects } = state;
@@ -174,8 +210,13 @@ const BuildSceneStep: React.FC = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [successMessage, setSuccessMessage] = useState<string>('');
+    const [importingModel, setImportingModel] = useState<boolean>(false);
 
     const [exportFormat, setExportFormat] = useState<string>('geojson');
+    
+    // New state for pre-configured models and model selection
+    const [selectedPreConfigModel, setSelectedPreConfigModel] = useState<string>('');
+    const [selectedModelPath, setSelectedModelPath] = useState<string>('');
 
     const buildSceneObjects = state.sceneObjects.filter(obj => 
         obj.source === 'build-scene-ui' || obj.type === 'box'
@@ -412,6 +453,136 @@ const BuildSceneStep: React.FC = () => {
         console.log('Continue to Hardware Selection');
     };
 
+    const handleAddPreConfiguredModel = () => {
+        if (!selectedPreConfigModel) {
+            setErrorMessage('Please select a pre-configured model first');
+            return;
+        }
+
+        setImportingModel(true);
+        setErrorMessage('');
+        
+        const selectedModel = PRE_CONFIGURED_MODELS.find(model => model.id === selectedPreConfigModel);
+        if (!selectedModel) {
+            setErrorMessage('Selected model configuration not found');
+            setImportingModel(false);
+            return;
+        }
+        
+        try {
+            // Convert dimensions from feet to meters for storage
+            // The actual model scale will be calculated by the ShipModel component
+            const widthMeters = selectedModel.width ? feetToMeters(selectedModel.width) : undefined;
+            const lengthMeters = selectedModel.length ? feetToMeters(selectedModel.length) : undefined;
+            const heightMeters = selectedModel.height ? feetToMeters(selectedModel.height) : undefined;
+            
+            const newObject: SceneObject = {
+                id: generateUUID(),
+                type: selectedModel.type,
+                class: 'asset',
+                position: { x: 0, y: 0, z: 0 },
+                rotation: { x: 0, y: 0, z: 0 },
+                width: widthMeters,
+                length: lengthMeters,
+                height: heightMeters,
+                // Add real-world length (in feet) for accurate scaling
+                realWorldLength: selectedModel.realWorldLength,
+                createdAt: new Date().toISOString(),
+                source: 'build-scene-ui'
+            };
+            
+            // Simulate loading delay for better UX
+            setTimeout(() => {
+                dispatch({ type: 'ADD_SCENE_OBJECT', payload: newObject });
+                setSuccessMessage(`${selectedModel.name} added to scene!`);
+                setTimeout(() => setSuccessMessage(''), 3000);
+                setImportingModel(false);
+                setSelectedPreConfigModel('');
+            }, 1200);
+            
+        } catch (error) {
+            console.error("Error dispatching ADD_SCENE_OBJECT for pre-configured model:", error);
+            setErrorMessage("Failed to add model to scene.");
+            setImportingModel(false);
+        }
+    };
+
+    const handleAddCustomModel = () => {
+        if (!selectedModelPath) {
+            setErrorMessage('Please select a model first');
+            return;
+        }
+
+        setImportingModel(true);
+        setErrorMessage('');
+        
+        const selectedModel = AVAILABLE_MODELS.find(model => model.path === selectedModelPath);
+        if (!selectedModel) {
+            setErrorMessage('Selected model not found');
+            setImportingModel(false);
+            return;
+        }
+        
+        // Determine the model type based on extension
+        const isShip = selectedModelPath.includes('uss_gerald_ford');
+        
+        try {
+            // Set realistic dimensions for known models
+            let widthMeters, lengthMeters, heightMeters, realWorldLength;
+            
+            if (isShip) {
+                // USS Gerald Ford dimensions
+                widthMeters = feetToMeters(256);  // Real width in feet
+                lengthMeters = feetToMeters(1106); // Real length in feet
+                heightMeters = feetToMeters(250);  // Approximate height in feet including tower
+                realWorldLength = 1106;            // Length in feet for scaling
+            } else {
+                // Default dimensions for other models
+                widthMeters = 10;
+                lengthMeters = 10;
+                heightMeters = 10;
+            }
+            
+            const newObject: SceneObject = {
+                id: generateUUID(),
+                type: isShip ? 'ship' : 'model',
+                class: 'asset',
+                position: { x: 0, y: 0, z: 0 },
+                rotation: { x: 0, y: 0, z: 0 },
+                width: widthMeters,
+                length: lengthMeters,
+                height: heightMeters,
+                // Add real-world length if available
+                realWorldLength: selectedModel.realWorldLength,
+                url: !isShip ? selectedModelPath : undefined,
+                createdAt: new Date().toISOString(),
+                source: 'build-scene-import'
+            };
+            
+            // Simulate loading delay for better UX
+            setTimeout(() => {
+                dispatch({ type: 'ADD_SCENE_OBJECT', payload: newObject });
+                setSuccessMessage(`${selectedModel.name} added to scene!`);
+                setTimeout(() => setSuccessMessage(''), 3000);
+                setImportingModel(false);
+                setSelectedModelPath('');
+            }, 1500);
+            
+            // Notify context that a heavy operation is starting (to show loading in viewer)
+            dispatch({ type: 'START_HEAVY_OPERATION' });
+            
+            // End the heavy operation indicator after model should be loaded
+            setTimeout(() => {
+                dispatch({ type: 'END_HEAVY_OPERATION' });
+            }, 3000);
+            
+        } catch (error) {
+            console.error("Error dispatching ADD_SCENE_OBJECT for model:", error);
+            setErrorMessage("Failed to add model to scene.");
+            setImportingModel(false);
+        }
+    };
+
     useEffect(() => {
         return () => {
             state.sceneObjects.forEach(obj => {
@@ -587,6 +758,122 @@ const BuildSceneStep: React.FC = () => {
                                 </Stack>
                             </Paper>
 
+                            {/* New Pre-configured Models Section */}
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'rgba(30, 30, 30, 0.5)', borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+                                <Stack spacing={2}>
+                                    <Box>
+                                        <SectionSubtitle variant="subtitle1">
+                                            <DirectionsBoatIcon sx={{ fontSize: '1rem', mr: 0.5, verticalAlign: 'text-top' }} />
+                                            Pre-Configured Scenes
+                                        </SectionSubtitle>
+                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', display: 'block', mb: 1 }}>
+                                            Add complete pre-configured objects with realistic scale and appearance
+                                        </Typography>
+                                        
+                                        <StyledFormControl fullWidth size="small">
+                                            <InputLabel id="preconfig-model-label">Select Pre-configured Model</InputLabel>
+                                            <Select
+                                                labelId="preconfig-model-label"
+                                                value={selectedPreConfigModel}
+                                                label="Select Pre-configured Model"
+                                                onChange={(e) => setSelectedPreConfigModel(e.target.value as string)}
+                                                disabled={importingModel}
+                                                MenuProps={{
+                                                    PaperProps: {
+                                                        sx: {
+                                                            bgcolor: 'rgba(21, 21, 21, 0.97)',
+                                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                            boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
+                                                            '& .MuiMenuItem-root': {
+                                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                                fontSize: '0.85rem',
+                                                            }
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                <MenuItem value="" disabled>Select a pre-configured model</MenuItem>
+                                                {PRE_CONFIGURED_MODELS.map(model => (
+                                                    <MenuItem key={model.id} value={model.id}>
+                                                        {model.name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </StyledFormControl>
+                                        
+                                        <Box sx={{ mt: 1 }}>
+                                            <ActionButton
+                                                variant="outlined"
+                                                onClick={handleAddPreConfiguredModel}
+                                                startIcon={importingModel ? <CircularProgress size={18} color="inherit" /> : <DirectionsBoatIcon />}
+                                                disabled={importingModel || !selectedPreConfigModel}
+                                                fullWidth
+                                            >
+                                                {importingModel ? 'Adding to Scene...' : 'Add to Scene'}
+                                            </ActionButton>
+                                        </Box>
+                                    </Box>
+                                </Stack>
+                            </Paper>
+
+                            {/* Custom 3D Model Import Section */}
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'rgba(30, 30, 30, 0.5)', borderColor: 'rgba(255, 255, 255, 0.1)' }}>
+                                <Stack spacing={2}>
+                                    <Box>
+                                        <SectionSubtitle variant="subtitle1">
+                                            <ModelTrainingIcon sx={{ fontSize: '1rem', mr: 0.5, verticalAlign: 'text-top' }} />
+                                            Available 3D Models
+                                        </SectionSubtitle>
+                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', display: 'block', mb: 1 }}>
+                                            Import models from our model library
+                                        </Typography>
+                                        
+                                        <StyledFormControl fullWidth size="small">
+                                            <InputLabel id="model-library-label">Select Model from Library</InputLabel>
+                                            <Select
+                                                labelId="model-library-label"
+                                                value={selectedModelPath}
+                                                label="Select Model from Library"
+                                                onChange={(e) => setSelectedModelPath(e.target.value as string)}
+                                                disabled={importingModel}
+                                                MenuProps={{
+                                                    PaperProps: {
+                                                        sx: {
+                                                            bgcolor: 'rgba(21, 21, 21, 0.97)',
+                                                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                                                            boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
+                                                            '& .MuiMenuItem-root': {
+                                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                                fontSize: '0.85rem',
+                                                            }
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                <MenuItem value="" disabled>Select a model from library</MenuItem>
+                                                {AVAILABLE_MODELS.map(model => (
+                                                    <MenuItem key={model.id} value={model.path}>
+                                                        {model.name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </StyledFormControl>
+                                        
+                                        <Box sx={{ mt: 1 }}>
+                                            <ActionButton
+                                                variant="outlined"
+                                                onClick={handleAddCustomModel}
+                                                startIcon={importingModel ? <CircularProgress size={18} color="inherit" /> : <ModelTrainingIcon />}
+                                                disabled={importingModel || !selectedModelPath}
+                                                fullWidth
+                                            >
+                                                {importingModel ? 'Importing to Scene...' : 'Import to Scene'}
+                                            </ActionButton>
+                                        </Box>
+                                    </Box>
+                                </Stack>
+                            </Paper>
+
                             <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)' }} />
 
                             <Box>
@@ -608,7 +895,10 @@ const BuildSceneStep: React.FC = () => {
                                                                 height: 30 
                                                             }}
                                                         >
-                                                            <ViewInArIcon fontSize="small" />
+                                                            {obj.type === 'ship' ? 
+                                                                <DirectionsBoatIcon fontSize="small" /> : 
+                                                                <ViewInArIcon fontSize="small" />
+                                                            }
                                                         </Avatar>
                                                     </ListItemAvatar>
                                                     <ListItemText

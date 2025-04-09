@@ -18,6 +18,7 @@ import { AppMode, useAppContext } from './AppContext';
 import { getCameraById, getLensById, getCompatibleLenses, getDroneModelById, getLensFStops } from '../utils/hardwareDatabase';
 import { calculateSensorDimensions, calculateFOV, feetToMeters } from '../utils/sensorCalculations';
 import * as THREE from 'three';
+import { SceneSettings, DEFAULT_SCENE_SETTINGS } from '../components/Local3DViewer/types/SceneSettings';
 
 // Define Hardware State Type
 export interface HardwareState {
@@ -37,30 +38,6 @@ export interface HardwareState {
     // Calculated FOV (example - store as needed)
     calculatedFov?: number; // Optional calculated FOV number
     availableFStops: number[]; // Available f-stops for the selected lens
-}
-
-// Define Scene Settings Type
-export interface SceneSettings {
-  gridSize: number;
-  gridDivisions: number;
-  gridUnit: 'meters' | 'feet';
-  gridVisible: boolean;
-  gridFadeDistance: number;
-  gridColorCenterLine: string;
-  gridColorGrid: string;
-  fov: number;
-  backgroundColor: string; // Hex color string e.g., '#ffffff'
-  ambientLightIntensity: number;
-  directionalLightIntensity: number;
-  skyEnabled: boolean;
-  sunPosition: [number, number, number];
-  axesVisible: boolean;
-  waterEnabled: boolean; // Toggle for water effect at ground level
-  showBelowGround: boolean; // Toggle for ability to view below ground plane
-  waterColor: string; // Color for water surface
-  waterOpacity: number; // Opacity of water (0-1)
-  waterWaveSpeed: number; // Speed of water waves animation
-  waterWaveScale: number; // Scale of the wave pattern
 }
 
 // Define Scene Object Type
@@ -292,63 +269,6 @@ export interface MissionState {
   // --- End NEW SECTIONS ---
 }
 
-// Default Scene Settings
-const defaultLightSceneSettings: SceneSettings = {
-    gridSize: 400, // Doubled from 200 to 400 (200%)
-    gridDivisions: 20,
-    gridUnit: 'meters', // Default to meters
-    fov: 50,
-    backgroundColor: '#e0e0e0', // Light grey background
-    gridColorCenterLine: '#888888',
-    gridColorGrid: '#cccccc',
-    gridVisible: true,
-    gridFadeDistance: 400, // Doubled from 200 to 400 (200%)
-    ambientLightIntensity: 0.6,
-    directionalLightIntensity: 1.0,
-    skyEnabled: true,
-    sunPosition: [100, 10, 100],
-    axesVisible: true,
-    waterEnabled: false, // Default water effect off
-    showBelowGround: false, // Default view below ground off
-    waterColor: '#4fc3f7', // Light blue for water
-    waterOpacity: 0.6, // Semi-transparent
-    waterWaveSpeed: 0.5, // Moderate wave speed
-    waterWaveScale: 1.0, // Default wave scale
-};
-
-const defaultDarkSceneSettings: SceneSettings = {
-    gridSize: 400, // Doubled from 200 to 400 (200%)
-    gridDivisions: 20,
-    gridUnit: 'meters', // Default to meters
-    fov: 50,
-    backgroundColor: '#121212', // Darker background
-    gridColorCenterLine: '#333333',
-    gridColorGrid: '#1e1e1e',
-    gridVisible: true,
-    gridFadeDistance: 400, // Doubled from 200 to 400 (200%)
-    ambientLightIntensity: 0.25, // Reduced ambient in dark
-    directionalLightIntensity: 0.7,
-    skyEnabled: true,
-    sunPosition: [100, 10, 100], // Same sun position
-    axesVisible: true,
-    waterEnabled: false, // Default water effect off
-    showBelowGround: false, // Default view below ground off
-    waterColor: '#0277bd', // Darker blue for water in dark mode
-    waterOpacity: 0.5, // Slightly less transparent in dark mode
-    waterWaveSpeed: 0.5, // Moderate wave speed
-    waterWaveScale: 1.0, // Default wave scale
-};
-
-const defaultGeckoSceneSettings: SceneSettings = {
-    ...defaultDarkSceneSettings, // Start with dark defaults
-    gridColorCenterLine: '#4CAF50', // Gecko green accents
-    gridColorGrid: '#388E3C',
-    backgroundColor: '#1B2631', // Darker blue/grey background
-    axesVisible: true,
-    waterColor: '#00695c', // Teal water to match gecko theme
-    waterOpacity: 0.55, // Custom opacity
-};
-
 // --- >>> DEV MODE: Default Mission Data <<< ---
 const DEFAULT_DEV_REGION: Region = {
     id: 'dev-region-01',
@@ -443,7 +363,7 @@ const initialState: MissionState = {
   isDroneVisible: true, 
   isCameraFrustumVisible: false,
   hiddenGcpIds: [],
-  sceneSettings: defaultDarkSceneSettings, // Initialize with dark theme defaults
+  sceneSettings: DEFAULT_SCENE_SETTINGS, // Initialize with default scene settings
   hardware: null, // Initialize hardware as null
   sceneObjects: [],
   editingSceneObjectId: null,

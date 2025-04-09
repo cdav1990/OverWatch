@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Box, Cylinder, Plane } from '@react-three/drei';
 import { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SceneObject, SelectedFaceInfo } from '../../../context/MissionContext';
 import { useMission } from '../../../context/MissionContext';
+import ShipModel from '../models/ShipModel';
+import ShipFallbackModel from '../models/ShipFallbackModel';
+import { ThreeErrorBoundary } from '../ErrorBoundary';
 
 interface SceneObjectRendererProps {
   sceneObject: SceneObject;
@@ -162,6 +165,38 @@ const SceneObjectRenderer: React.FC<SceneObjectRendererProps> = ({
         >
           <meshStandardMaterial color={objectColor} />
         </Box>
+      );
+    case 'ship':
+      return (
+        <ThreeErrorBoundary fallback={
+          <ShipFallbackModel 
+            position={sceneObject.position} 
+            rotation={sceneObject.rotation}
+            scale={0.1}
+          />
+        }>
+          <Suspense fallback={
+            <ShipFallbackModel 
+              position={sceneObject.position} 
+              rotation={sceneObject.rotation}
+              scale={0.1}
+            />
+          }>
+            <group
+              onClick={handleClick}
+              onDoubleClick={handleDoubleClick}
+              onPointerOver={() => onPointerOver(sceneObject.id)}
+              onPointerOut={() => onPointerOut(sceneObject.id)}
+              userData={{ sceneObjectId: sceneObject.id }}
+            >
+              <ShipModel 
+                position={sceneObject.position}
+                rotation={sceneObject.rotation}
+                realWorldLength={sceneObject.realWorldLength}
+              />
+            </group>
+          </Suspense>
+        </ThreeErrorBoundary>
       );
     // Add cases for 'model', 'area', 'cylinder' etc. as needed
     // case 'model': return <ModelRenderer ... />;

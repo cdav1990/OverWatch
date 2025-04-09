@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo, useMemo } from 'react';
 import {
   Paper,
   Typography,
@@ -18,7 +18,13 @@ import {
   InputAdornment,
   Fade,
   Collapse,
-  useTheme
+  useTheme,
+  Radio,
+  RadioGroup,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import CloseIcon from '@mui/icons-material/Close';
@@ -31,7 +37,11 @@ import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import DesignServicesOutlinedIcon from '@mui/icons-material/DesignServicesOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import { SceneSettings } from '../../context/MissionContext';
+import WaterIcon from '@mui/icons-material/Water';
+import TerrainIcon from '@mui/icons-material/Terrain';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import ScaleIcon from '@mui/icons-material/Scale';
+import { SceneSettings, SceneTheme, SCENE_THEMES, GRID_PRESETS } from '../Local3DViewer/types/SceneSettings';
 import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
 
 // Type definitions
@@ -50,52 +60,7 @@ interface AdvancedSceneSettingsProps {
   onLoadPreset?: () => void;
 }
 
-interface SceneTheme {
-  name: string;
-  backgroundColor: string;
-  gridColorGrid: string;
-  gridColorCenterLine: string;
-  ambientLightIntensity: number;
-  directionalLightIntensity: number;
-}
-
-// Predefined scene themes
-const SCENE_THEMES: SceneTheme[] = [
-  {
-    name: "Default Dark",
-    backgroundColor: "#121212",
-    gridColorGrid: "#303030",
-    gridColorCenterLine: "#4fc3f7",
-    ambientLightIntensity: 0.5,
-    directionalLightIntensity: 1.0
-  },
-  {
-    name: "Minimal Light",
-    backgroundColor: "#f5f5f5",
-    gridColorGrid: "#e0e0e0",
-    gridColorCenterLine: "#2196f3",
-    ambientLightIntensity: 0.7,
-    directionalLightIntensity: 1.2
-  },
-  {
-    name: "Blueprint",
-    backgroundColor: "#0a192f",
-    gridColorGrid: "#172a45",
-    gridColorCenterLine: "#64ffda",
-    ambientLightIntensity: 0.4,
-    directionalLightIntensity: 0.9
-  },
-  {
-    name: "High Contrast",
-    backgroundColor: "#000000",
-    gridColorGrid: "#333333",
-    gridColorCenterLine: "#ff4081",
-    ambientLightIntensity: 0.6,
-    directionalLightIntensity: 1.4
-  }
-];
-
-// Styled components
+// Styled components with improved performance
 const StyledPanel = styled(Paper)(({ theme }) => ({
   backgroundColor: alpha(theme.palette.background.paper, 0.95),
   color: theme.palette.text.primary,
@@ -105,8 +70,8 @@ const StyledPanel = styled(Paper)(({ theme }) => ({
   overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
-  maxHeight: '85vh',
-  maxWidth: '450px',
+  maxHeight: '90vh',
+  maxWidth: '475px',
   width: '100%',
   position: 'relative',
   border: `1px solid ${alpha(theme.palette.divider, 0.1)}`
@@ -205,6 +170,22 @@ const ThemeCard = styled(Box)<{ selected?: boolean }>(({ theme, selected }) => (
   })
 }));
 
+const PresetCard = styled(Box)<{ selected?: boolean }>(({ theme, selected }) => ({
+  padding: theme.spacing(1.5),
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: alpha(theme.palette.background.default, 0.5),
+  border: `1px solid ${selected ? theme.palette.primary.main : 'transparent'}`,
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+  '&:hover': {
+    backgroundColor: alpha(theme.palette.background.default, 0.7),
+    boxShadow: theme.shadows[2],
+  },
+  ...(selected && {
+    boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
+  })
+}));
+
 // TabPanel component
 const TabPanel = memo(function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
@@ -231,6 +212,49 @@ const TabPanel = memo(function TabPanel(props: TabPanelProps) {
   );
 });
 
+// Predefined color palettes for different UI elements
+const COLOR_PALETTES = {
+  gridLines: [
+    { name: 'Light Gray', value: '#cccccc' },
+    { name: 'Dark Gray', value: '#555555' },
+    { name: 'Medium Gray', value: '#888888' },
+    { name: 'Subtle Blue', value: '#5c7cfa' }, 
+    { name: 'Subtle Green', value: '#69db7c' },
+    { name: 'White', value: '#ffffff' },
+    { name: 'Black', value: '#000000' }
+  ],
+  centerLines: [
+    { name: 'Sky Blue', value: '#4fc3f7' },
+    { name: 'Teal', value: '#64ffda' },
+    { name: 'Coral', value: '#ff6e40' },
+    { name: 'Magenta', value: '#ff4081' },
+    { name: 'Purple', value: '#b388ff' },
+    { name: 'Lime', value: '#b9f6ca' },
+    { name: 'Gold', value: '#ffd740' },
+    { name: 'White', value: '#ffffff' },
+    { name: 'Red', value: '#f44336' }
+  ],
+  backgrounds: [
+    { name: 'Dark Gray', value: '#121212' },
+    { name: 'Medium Gray', value: '#2d2d2d' },
+    { name: 'Navy Blue', value: '#0a192f' },
+    { name: 'Deep Purple', value: '#311b92' },
+    { name: 'Dark Teal', value: '#004d40' },
+    { name: 'Black', value: '#000000' },
+    { name: 'Light Gray', value: '#f5f5f5' },
+    { name: 'Soft Blue', value: '#e3f2fd' }
+  ],
+  waterColors: [
+    { name: 'Ocean Blue', value: '#0277bd' },
+    { name: 'Teal', value: '#00838f' },
+    { name: 'Deep Blue', value: '#0d47a1' },
+    { name: 'Light Blue', value: '#4fc3f7' },
+    { name: 'Aqua', value: '#18ffff' },
+    { name: 'Navy', value: '#1a237e' },
+    { name: 'Turquoise', value: '#1de9b6' }
+  ]
+};
+
 // Main component
 const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
   settings,
@@ -244,12 +268,26 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
   const [tabValue, setTabValue] = useState(0);
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const [themeApplied, setThemeApplied] = useState(false);
+  const [selectedGridPreset, setSelectedGridPreset] = useState<string | null>(null);
+  const [gridScaleMode, setGridScaleMode] = useState<'auto' | 'manual'>(
+    settings.gridAutoScale ? 'auto' : 'manual'
+  );
+
+  // Calculate actual grid cell size for display
+  const gridCellSize = useMemo(() => {
+    const size = settings.gridSize / settings.gridDivisions;
+    return {
+      meters: size,
+      feet: size * 3.28084
+    };
+  }, [settings.gridSize, settings.gridDivisions]);
 
   // Callback functions
   const handleTabChange = useCallback((event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   }, []);
 
+  // Apply a complete theme (colors, lighting, water, etc)
   const applyTheme = useCallback((themeIndex: number) => {
     const theme = SCENE_THEMES[themeIndex];
     onChange('backgroundColor', theme.backgroundColor);
@@ -258,6 +296,14 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
     onChange('ambientLightIntensity', theme.ambientLightIntensity);
     onChange('directionalLightIntensity', theme.directionalLightIntensity);
     
+    // Apply water settings if defined in the theme
+    if (theme.waterEnabled !== undefined) {
+      onChange('waterEnabled', theme.waterEnabled);
+    }
+    if (theme.waterColor) {
+      onChange('waterColor', theme.waterColor);
+    }
+    
     setSelectedTheme(theme.name);
     setThemeApplied(true);
     
@@ -265,6 +311,27 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
     setTimeout(() => {
       setThemeApplied(false);
     }, 3000);
+  }, [onChange]);
+
+  // Apply a grid preset for different scales
+  const applyGridPreset = useCallback((preset: typeof GRID_PRESETS[0]) => {
+    onChange('gridSize', preset.gridSize);
+    onChange('gridDivisions', preset.divisions);
+    onChange('gridFadeDistance', preset.fadeDistance);
+    onChange('gridUnit', preset.unit);
+    setSelectedGridPreset(preset.name);
+
+    // Show confirmation feedback
+    setTimeout(() => {
+      setSelectedGridPreset(null);
+    }, 3000);
+  }, [onChange]);
+
+  // Toggle grid auto-scaling mode
+  const handleGridScaleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const mode = (event.target.value as 'auto' | 'manual');
+    setGridScaleMode(mode);
+    onChange('gridAutoScale', mode === 'auto');
   }, [onChange]);
 
   // Memoized handlers to prevent unnecessary re-renders
@@ -309,6 +376,7 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
         aria-label="scene settings tabs"
       >
         <Tab icon={<GridOnIcon />} label="Grid" />
+        <Tab icon={<TerrainIcon />} label="Ground" />
         <Tab icon={<CameraAltIcon />} label="Camera" />
         <Tab icon={<LightModeIcon />} label="Lighting" />
         <Tab icon={<PaletteIcon />} label="Theme" />
@@ -336,195 +404,253 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
             </Box>
 
             <Box>
-              <SectionTitle>Grid Divisions</SectionTitle>
-              <StyledSlider
-                value={settings.gridDivisions}
-                onChange={handleSliderChange('gridDivisions')}
-                min={2}
-                max={100}
-                step={1}
-                valueLabelDisplay="auto"
-                marks={[
-                  { value: 2, label: '2' },
-                  { value: 50, label: '50' },
-                  { value: 100, label: '100' }
-                ]}
-              />
-              <Typography variant="caption" color="text.secondary">
-                Cell Size: {(300 / settings.gridDivisions).toFixed(1)} meters ({(300 / settings.gridDivisions * 3.28084).toFixed(1)} feet)
+              <SectionTitle>Grid Scale Presets</SectionTitle>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
+                Select a preset optimized for different operational scales
               </Typography>
+              
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                {GRID_PRESETS.map((preset, index) => (
+                  <PresetCard 
+                    key={preset.name}
+                    selected={selectedGridPreset === preset.name}
+                    onClick={() => applyGridPreset(preset)}
+                    sx={{ 
+                      width: 'calc(50% - 8px)', 
+                      mb: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start'
+                    }}
+                  >
+                    <Typography variant="body2" fontWeight={500}>
+                      {preset.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {preset.gridSize} {preset.unit} • {preset.divisions} divisions
+                    </Typography>
+                  </PresetCard>
+                ))}
+              </Stack>
             </Box>
 
             <Box>
-              <SectionTitle>Grid Fade Distance</SectionTitle>
-              <StyledSlider
-                value={settings.gridFadeDistance}
-                onChange={handleSliderChange('gridFadeDistance')}
-                min={5}
-                max={300}
-                step={1}
-                marks={[
-                  { value: 5, label: '5' },
-                  { value: 150, label: '150' },
-                  { value: 300, label: '300' }
-                ]}
-                valueLabelDisplay="auto"
-              />
+              <SectionTitle>Grid Scale Mode</SectionTitle>
+              <RadioGroup
+                row
+                value={gridScaleMode}
+                onChange={handleGridScaleChange}
+              >
+                <FormControlLabel 
+                  value="auto" 
+                  control={<Radio size="small" />} 
+                  label="Auto-scale to fit content" 
+                />
+                <FormControlLabel 
+                  value="manual" 
+                  control={<Radio size="small" />} 
+                  label="Manual settings" 
+                />
+              </RadioGroup>
             </Box>
+
+            <Collapse in={gridScaleMode === 'manual'}>
+              <Stack spacing={2.5}>
+                <Box>
+                  <SectionTitle>Grid Unit</SectionTitle>
+                  <RadioGroup
+                    row
+                    value={settings.gridUnit}
+                    onChange={(e) => onChange('gridUnit', e.target.value)}
+                  >
+                    <FormControlLabel 
+                      value="meters" 
+                      control={<Radio size="small" />} 
+                      label="Meters" 
+                    />
+                    <FormControlLabel 
+                      value="feet" 
+                      control={<Radio size="small" />} 
+                      label="Feet" 
+                    />
+                  </RadioGroup>
+                </Box>
+
+                <Box>
+                  <SectionTitle>Grid Size</SectionTitle>
+                  <StyledSlider
+                    value={settings.gridSize}
+                    onChange={handleSliderChange('gridSize')}
+                    min={100}
+                    max={5000}
+                    step={100}
+                    valueLabelDisplay="auto"
+                    marks={[
+                      { value: 100, label: '100' },
+                      { value: 2500, label: '2500' },
+                      { value: 5000, label: '5000' }
+                    ]}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Total grid extent: {settings.gridSize} {settings.gridUnit}
+                  </Typography>
+                </Box>
+
+                <Box>
+                  <SectionTitle>Grid Divisions</SectionTitle>
+                  <Typography variant="body2" gutterBottom id="grid-divisions-label">
+                    Grid Divisions: {settings.gridDivisions}
+                  </Typography>
+                  <StyledSlider
+                    aria-labelledby="grid-divisions-label"
+                    value={settings.gridDivisions}
+                    onChange={handleSliderChange('gridDivisions')}
+                    min={5}
+                    max={100}
+                    step={5}
+                    valueLabelDisplay="auto"
+                    marks={[
+                      { value: 5, label: '5' },
+                      { value: 50, label: '50' },
+                      { value: 100, label: '100' }
+                    ]}
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        width: 16,
+                        height: 16,
+                      },
+                      '& .MuiSlider-rail': {
+                        opacity: 0.5,
+                      }
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Cell Size: {gridCellSize.meters.toFixed(1)} meters ({gridCellSize.feet.toFixed(1)} feet)
+                  </Typography>
+                </Box>
+
+                <Box>
+                  <SectionTitle>Grid Fade Distance</SectionTitle>
+                  <Typography variant="body2" gutterBottom id="grid-fade-label">
+                    Grid Fade Distance: {settings.gridFadeDistance}
+                  </Typography>
+                  <StyledSlider
+                    aria-labelledby="grid-fade-label"
+                    value={settings.gridFadeDistance}
+                    onChange={handleSliderChange('gridFadeDistance')}
+                    min={100}
+                    max={5000}
+                    step={100}
+                    marks={[
+                      { value: 100, label: '100' },
+                      { value: 2500, label: '2500' },
+                      { value: 5000, label: '5000' }
+                    ]}
+                    valueLabelDisplay="auto"
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        width: 16,
+                        height: 16,
+                      },
+                      '& .MuiSlider-rail': {
+                        opacity: 0.5,
+                      }
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Distance at which grid fades out: {settings.gridFadeDistance} {settings.gridUnit}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Collapse>
 
             <Box>
               <SectionTitle>Grid Colors</SectionTitle>
               <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-                <StyledTextField
-                  label="Main Grid"
-                  value={settings.gridColorGrid}
-                  onChange={handleColorChange('gridColorGrid')}
-                  size="small"
-                  fullWidth
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
+                <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+                  <InputLabel id="grid-color-label">Main Grid Color</InputLabel>
+                  <Select
+                    labelId="grid-color-label"
+                    value={settings.gridColorGrid}
+                    onChange={(e) => onChange('gridColorGrid', e.target.value)}
+                    label="Main Grid Color"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <Box 
                           sx={{ 
                             width: 16, 
                             height: 16, 
-                            backgroundColor: settings.gridColorGrid,
+                            mr: 1, 
+                            backgroundColor: selected as string,
                             borderRadius: '2px',
-                            border: '1px solid rgba(255,255,255,0.1)'
+                            border: '1px solid rgba(255,255,255,0.3)'
                           }} 
                         />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <StyledTextField
-                  label="Center Lines"
-                  value={settings.gridColorCenterLine}
-                  onChange={handleColorChange('gridColorCenterLine')}
-                  size="small"
-                  fullWidth
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
+                        {COLOR_PALETTES.gridLines.find(color => color.value === selected)?.name || selected}
+                      </Box>
+                    )}
+                  >
+                    {COLOR_PALETTES.gridLines.map((color) => (
+                      <MenuItem key={color.value} value={color.value}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box 
+                            sx={{ 
+                              width: 16, 
+                              height: 16, 
+                              mr: 1, 
+                              backgroundColor: color.value,
+                              borderRadius: '2px',
+                              border: '1px solid rgba(255,255,255,0.1)'
+                            }} 
+                          />
+                          {color.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="center-line-color-label">Center Line Color</InputLabel>
+                  <Select
+                    labelId="center-line-color-label"
+                    value={settings.gridColorCenterLine}
+                    onChange={(e) => onChange('gridColorCenterLine', e.target.value)}
+                    label="Center Line Color"
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <Box 
                           sx={{ 
                             width: 16, 
                             height: 16, 
-                            backgroundColor: settings.gridColorCenterLine,
+                            mr: 1, 
+                            backgroundColor: selected as string,
                             borderRadius: '2px',
-                            border: '1px solid rgba(255,255,255,0.1)'
+                            border: '1px solid rgba(255,255,255,0.3)'
                           }} 
                         />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Stack>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            <Box>
-              <SectionTitle>Ground & Water Settings</SectionTitle>
-              <Stack spacing={2}>
-                <FormControlLabel
-                  control={
-                    <Switch 
-                      checked={settings.showBelowGround}
-                      onChange={handleSwitchChange('showBelowGround')}
-                      color="primary"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">Show Below Ground</Typography>
-                  }
-                />
-                
-                <FormControlLabel
-                  control={
-                    <Switch 
-                      checked={settings.waterEnabled}
-                      onChange={handleSwitchChange('waterEnabled')}
-                      color="primary"
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">Enable Water Effect</Typography>
-                  }
-                />
-
-                {settings.waterEnabled && (
-                  <Collapse in={settings.waterEnabled}>
-                    <Stack spacing={2} sx={{ mt: 1 }}>
-                      <StyledTextField
-                        label="Water Color"
-                        value={settings.waterColor}
-                        onChange={handleColorChange('waterColor')}
-                        size="small"
-                        fullWidth
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Box 
-                                sx={{ 
-                                  width: 16, 
-                                  height: 16, 
-                                  backgroundColor: settings.waterColor,
-                                  borderRadius: '2px',
-                                  border: '1px solid rgba(255,255,255,0.1)'
-                                }} 
-                              />
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
-                      
-                      <Box>
-                        <Typography variant="body2" gutterBottom>
-                          Water Opacity: {settings.waterOpacity.toFixed(2)}
-                        </Typography>
-                        <StyledSlider
-                          value={settings.waterOpacity}
-                          onChange={handleSliderChange('waterOpacity')}
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          valueLabelDisplay="auto"
-                        />
+                        {COLOR_PALETTES.centerLines.find(color => color.value === selected)?.name || selected}
                       </Box>
-                      
-                      <Box>
-                        <Typography variant="body2" gutterBottom>
-                          Wave Speed: {settings.waterWaveSpeed.toFixed(1)}
-                        </Typography>
-                        <StyledSlider
-                          value={settings.waterWaveSpeed}
-                          onChange={handleSliderChange('waterWaveSpeed')}
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          valueLabelDisplay="auto"
-                        />
-                      </Box>
-                      
-                      <Box>
-                        <Typography variant="body2" gutterBottom>
-                          Wave Scale: {settings.waterWaveScale.toFixed(1)}
-                        </Typography>
-                        <StyledSlider
-                          value={settings.waterWaveScale}
-                          onChange={handleSliderChange('waterWaveScale')}
-                          min={0.1}
-                          max={3}
-                          step={0.1}
-                          valueLabelDisplay="auto"
-                        />
-                      </Box>
-                    </Stack>
-                  </Collapse>
-                )}
+                    )}
+                  >
+                    {COLOR_PALETTES.centerLines.map((color) => (
+                      <MenuItem key={color.value} value={color.value}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box 
+                            sx={{ 
+                              width: 16, 
+                              height: 16, 
+                              mr: 1, 
+                              backgroundColor: color.value,
+                              borderRadius: '2px',
+                              border: '1px solid rgba(255,255,255,0.1)'
+                            }} 
+                          />
+                          {color.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Stack>
             </Box>
 
@@ -546,8 +672,192 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
           </Stack>
         </TabPanel>
 
-        {/* Camera Tab */}
+        {/* Ground Tab - NEW */}
         <TabPanel value={tabValue} index={1}>
+          <Stack spacing={3}>
+            <Box>
+              <SectionTitle>Ground Plane</SectionTitle>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={!settings.hideGroundPlane}
+                    onChange={(e) => {
+                      onChange('hideGroundPlane', !e.target.checked);
+                      // Force rerender the viewer
+                      window.dispatchEvent(new Event('resize'));
+                    }}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">Show Ground Plane</Typography>
+                }
+              />
+            </Box>
+
+            <Box>
+              <SectionTitle>Ground Transparency</SectionTitle>
+              <StyledSlider
+                value={settings.groundOpacity ?? 0.3}
+                onChange={handleSliderChange('groundOpacity')}
+                min={0}
+                max={1}
+                step={0.05}
+                valueLabelDisplay="auto"
+                valueLabelFormat={value => `${Math.round(value * 100)}%`}
+                marks={[
+                  { value: 0, label: '0%' },
+                  { value: 0.5, label: '50%' },
+                  { value: 1, label: '100%' }
+                ]}
+                disabled={settings.hideGroundPlane}
+              />
+            </Box>
+
+            <Box>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={settings.showBelowGround ?? false}
+                    onChange={handleSwitchChange('showBelowGround')}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">Allow View Below Ground</Typography>
+                }
+                disabled={settings.hideGroundPlane}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Enables viewing below the ground plane, useful for terrain inspection
+              </Typography>
+            </Box>
+
+            <Divider />
+
+            <Box>
+              <SectionTitle>Water Surface</SectionTitle>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={settings.waterEnabled ?? false}
+                    onChange={(e) => {
+                      onChange('waterEnabled', e.target.checked);
+                      // Force rerender the viewer
+                      window.dispatchEvent(new Event('resize'));
+                    }}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">Enable Water Surface</Typography>
+                }
+              />
+            </Box>
+
+            <Collapse in={settings.waterEnabled ?? false}>
+              <Stack spacing={2.5}>
+                <Box>
+                  <SectionTitle>Water Color</SectionTitle>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="water-color-label">Water Color</InputLabel>
+                    <Select
+                      labelId="water-color-label"
+                      value={settings.waterColor ?? '#4fc3f7'}
+                      onChange={(e) => onChange('waterColor', e.target.value)}
+                      label="Water Color"
+                      renderValue={(selected) => (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box 
+                            sx={{ 
+                              width: 16, 
+                              height: 16, 
+                              mr: 1, 
+                              backgroundColor: selected as string,
+                              borderRadius: '2px',
+                              border: '1px solid rgba(255,255,255,0.3)'
+                            }} 
+                          />
+                          {COLOR_PALETTES.waterColors.find(color => color.value === selected)?.name || selected}
+                        </Box>
+                      )}
+                    >
+                      {COLOR_PALETTES.waterColors.map((color) => (
+                        <MenuItem key={color.value} value={color.value}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Box 
+                              sx={{ 
+                                width: 16, 
+                                height: 16, 
+                                mr: 1, 
+                                backgroundColor: color.value,
+                                borderRadius: '2px',
+                                border: '1px solid rgba(255,255,255,0.1)'
+                              }} 
+                            />
+                            {color.name}
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                <Box>
+                  <SectionTitle>Water Transparency</SectionTitle>
+                  <StyledSlider
+                    value={settings.waterOpacity ?? 0.6}
+                    onChange={handleSliderChange('waterOpacity')}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={value => `${Math.round(value * 100)}%`}
+                    marks={[
+                      { value: 0, label: '0%' },
+                      { value: 0.5, label: '50%' },
+                      { value: 1, label: '100%' }
+                    ]}
+                  />
+                </Box>
+
+                <Box>
+                  <SectionTitle>Wave Animation</SectionTitle>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="body2" gutterBottom>Wave Speed</Typography>
+                      <StyledSlider
+                        value={settings.waterWaveSpeed ?? 0.5}
+                        onChange={handleSliderChange('waterWaveSpeed')}
+                        min={0}
+                        max={2}
+                        step={0.1}
+                        valueLabelDisplay="auto"
+                      />
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" gutterBottom>Wave Scale</Typography>
+                      <StyledSlider
+                        value={settings.waterWaveScale ?? 1.0}
+                        onChange={handleSliderChange('waterWaveScale')}
+                        min={0.2}
+                        max={3}
+                        step={0.1}
+                        valueLabelDisplay="auto"
+                      />
+                    </Box>
+                  </Stack>
+                </Box>
+              </Stack>
+            </Collapse>
+          </Stack>
+        </TabPanel>
+
+        {/* Camera Tab */}
+        <TabPanel value={tabValue} index={2}>
           <Stack spacing={3}>
             <Box>
               <SectionTitle>Field of View</SectionTitle>
@@ -570,6 +880,37 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
               </Typography>
             </Box>
 
+            <Box>
+              <SectionTitle>Camera Navigation</SectionTitle>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={settings.cameraInvertY ?? false}
+                    onChange={handleSwitchChange('cameraInvertY')}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">Invert Y-Axis</Typography>
+                }
+              />
+              
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={settings.cameraDamping ?? true}
+                    onChange={handleSwitchChange('cameraDamping')}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">Smooth Camera Movement</Typography>
+                }
+              />
+            </Box>
+
             <Box sx={{ mt: 2 }}>
               <Box sx={{ 
                 p: 1.5, 
@@ -589,7 +930,7 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
         </TabPanel>
 
         {/* Lighting Tab */}
-        <TabPanel value={tabValue} index={2}>
+        <TabPanel value={tabValue} index={3}>
           <Stack spacing={3}>
             <Box>
               <FormControlLabel
@@ -646,35 +987,134 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
                 Strong directed light that casts shadows
               </Typography>
             </Box>
+
+            <Collapse in={settings.skyEnabled}>
+              <Box>
+                <SectionTitle>Sun Position</SectionTitle>
+                <Stack direction="row" spacing={2}>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body2" gutterBottom>Elevation</Typography>
+                    <StyledSlider
+                      value={settings.sunPosition?.[1] ?? 10}
+                      onChange={(_, value) => {
+                        const newPosition = [...(settings.sunPosition || [100, 10, 100])];
+                        newPosition[1] = value as number;
+                        onChange('sunPosition', newPosition);
+                      }}
+                      min={-10}
+                      max={100}
+                      step={1}
+                      valueLabelDisplay="auto"
+                      marks={[
+                        { value: -10, label: 'Low' },
+                        { value: 50, label: 'Mid' },
+                        { value: 100, label: 'High' },
+                      ]}
+                    />
+                  </Box>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body2" gutterBottom>Rotation</Typography>
+                    <StyledSlider
+                      value={(Math.atan2(
+                        settings.sunPosition?.[0] ?? 100, 
+                        settings.sunPosition?.[2] ?? 100
+                      ) * 180 / Math.PI + 360) % 360}
+                      onChange={(_, value) => {
+                        const angle = (value as number) * Math.PI / 180;
+                        const distance = Math.sqrt(
+                          Math.pow(settings.sunPosition?.[0] ?? 100, 2) + 
+                          Math.pow(settings.sunPosition?.[2] ?? 100, 2)
+                        );
+                        const newPosition = [
+                          Math.sin(angle) * distance,
+                          settings.sunPosition?.[1] ?? 10,
+                          Math.cos(angle) * distance
+                        ];
+                        onChange('sunPosition', newPosition);
+                      }}
+                      min={0}
+                      max={360}
+                      step={15}
+                      valueLabelDisplay="auto"
+                      marks={[
+                        { value: 0, label: '0°' },
+                        { value: 180, label: '180°' },
+                        { value: 360, label: '360°' },
+                      ]}
+                    />
+                  </Box>
+                </Stack>
+              </Box>
+            </Collapse>
+
+            <Box>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={settings.shadowsEnabled ?? true}
+                    onChange={handleSwitchChange('shadowsEnabled')}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2">Enable Shadows</Typography>
+                }
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Shadows improve depth perception but may impact performance
+              </Typography>
+            </Box>
           </Stack>
         </TabPanel>
 
         {/* Theme Tab */}
-        <TabPanel value={tabValue} index={3}>
+        <TabPanel value={tabValue} index={4}>
           <Stack spacing={3}>
             <Box>
               <SectionTitle>Background Color</SectionTitle>
-              <StyledTextField
-                value={settings.backgroundColor}
-                onChange={handleColorChange('backgroundColor')}
-                fullWidth
-                size="small"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
+              <FormControl fullWidth size="small">
+                <InputLabel id="background-color-label">Background Color</InputLabel>
+                <Select
+                  labelId="background-color-label"
+                  value={settings.backgroundColor}
+                  onChange={(e) => onChange('backgroundColor', e.target.value)}
+                  label="Background Color"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       <Box 
                         sx={{ 
                           width: 16, 
                           height: 16, 
-                          backgroundColor: settings.backgroundColor,
+                          mr: 1, 
+                          backgroundColor: selected as string,
                           borderRadius: '2px',
-                          border: '1px solid rgba(255,255,255,0.1)'
+                          border: '1px solid rgba(255,255,255,0.3)'
                         }} 
                       />
-                    </InputAdornment>
-                  ),
-                }}
-              />
+                      {COLOR_PALETTES.backgrounds.find(color => color.value === selected)?.name || selected}
+                    </Box>
+                  )}
+                >
+                  {COLOR_PALETTES.backgrounds.map((color) => (
+                    <MenuItem key={color.value} value={color.value}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box 
+                          sx={{ 
+                            width: 16, 
+                            height: 16, 
+                            mr: 1, 
+                            backgroundColor: color.value,
+                            borderRadius: '2px', 
+                            border: '1px solid rgba(255,255,255,0.1)'
+                          }} 
+                        />
+                        {color.name}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
 
             <Box>
@@ -704,6 +1144,7 @@ const AdvancedSceneSettings: React.FC<AdvancedSceneSettingsProps> = ({
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {sceneTheme.ambientLightIntensity.toFixed(1)} ambient, {sceneTheme.directionalLightIntensity.toFixed(1)} direct
+                          {sceneTheme.waterEnabled ? ", water" : ""}
                         </Typography>
                       </Box>
                       <Collapse in={selectedTheme === sceneTheme.name && themeApplied}>

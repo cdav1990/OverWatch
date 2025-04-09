@@ -140,7 +140,7 @@ export interface SafetyParams {
   climbSpeed: number; // Default climb speed (m/s)
   failsafeAction: 'RTL' | 'LAND' | 'HOLD'; // Action on connection loss, etc.
   missionEndAction: 'RTL' | 'LAND' | 'HOLD'; // Action after final waypoint
-  climbToAltitude?: number; // Altitude to climb to before starting mission (meters AGL, optional)
+  climbToAltitude: number; // Adding this property
   // Add other relevant parameters like geofence radius, max altitude, etc.
 }
 

@@ -415,21 +415,31 @@ const Local3DViewer: React.FC<Local3DViewerProps> = ({
       
       {/* 3D Canvas with optimized settings */}
       <Canvas 
-        shadows 
+        key={`canvas-${sceneSettings.waterEnabled}-${sceneSettings.hideGroundPlane}-${sceneSettings.gridVisible}`}
+        shadows={sceneSettings.shadowsEnabled ?? true}
         camera={{ 
           position: [30, 30, 30],
-          fov: sceneSettings.fov
+          fov: sceneSettings.fov,
+          near: 0.1,
+          far: 10000, // Extended far plane for large scale scenes
         }}
         dpr={[1, 2]} // Limit pixel ratio for better performance
-        performance={{ min: 0.5 }} // Allow frame rate to drop for performance
+        performance={{ 
+          min: 0.5, // Allow frame rate to drop for performance
+          max: 1 // Cap at native refresh rate
+        }}
         gl={{ 
           antialias: true,
           alpha: false, // Disable alpha for performance
           stencil: false, // Disable stencil for performance
           depth: true, // Keep depth for proper rendering
-          powerPreference: 'high-performance'
+          powerPreference: 'high-performance',
+          logarithmicDepthBuffer: true // Handle large scale differences better
         }}
-        onCreated={() => {
+        onCreated={({ gl }) => {
+          // Performance optimizations
+          gl.setPixelRatio(window.devicePixelRatio || 1);
+          
           // Wait for the next frame to ensure the renderer is actually ready
           requestAnimationFrame(() => handleSceneInit());
         }}

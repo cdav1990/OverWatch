@@ -47,7 +47,7 @@ import { useMission } from '../../context/MissionContext';
 import { metersToFeet } from '../../utils/sensorCalculations';
 import { PathType } from '../../types/mission';
 import { useThemeContext } from '../../context/ThemeContext';
-import { SceneSettings, HardwareState } from '../../context/MissionContext';
+import { HardwareState } from '../../context/MissionContext';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { feetToMeters } from '../../utils/sensorCalculations';
 
@@ -100,6 +100,9 @@ const {
   getCompatibleLenses, 
   getLensFStops 
 } = await import('../../utils/hardwareDatabase');
+
+// Update the import to use our new SceneSettings type
+import { SceneSettings } from '../../components/Local3DViewer/types/SceneSettings';
 
 // Loading fallback component
 const LoadingFallback = () => (
