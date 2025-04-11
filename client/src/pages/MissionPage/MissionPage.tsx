@@ -5,7 +5,7 @@ import { useMission } from '../../context/MissionContext';
 import Local3DViewer from '../../components/Local3DViewer';
 import { GCP, AltitudeReference, LocalCoord, PathSegment, Waypoint, LatLng } from '../../types/mission'; // Import more types
 import { generateUUID, latLngToLocal, localToLatLng } from '../../utils/coordinateUtils'; // Import converters
-import { generateRasterPathSegment, RasterParams } from '../../utils/pathUtils';
+import { generateRasterPathSegment, RasterParams, addTakeoffAndLanding } from '../../utils/pathUtils';
 import { feetToMeters } from '../../utils/sensorCalculations'; // Import converter for feet to meters
 import { MissionArea } from '../../context/MissionContext'; // Import MissionArea interface
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -129,6 +129,18 @@ const MissionPageContent: React.FC = () => {
       return;
     }
     
+    // Ensure takeoff point is defined
+    if (!currentMission.takeoffPoint) {
+      console.error("Takeoff point is not defined. Please set a takeoff point in the Pre-Checks step.");
+      return;
+    }
+
+    // Ensure safety parameters are defined
+    if (!currentMission.safetyParams) {
+      console.error("Safety parameters are not defined.");
+      return;
+    }
+    
     // Use RELATIVE altitude reference for the generated path (AGL)
     const altRef = AltitudeReference.RELATIVE;
 
@@ -142,12 +154,20 @@ const MissionPageContent: React.FC = () => {
       altReference: altRef,
       orientation: orientation, // Pass orientation
       snakePattern: snakePattern, // Pass snake pattern flag
-      defaultSpeed: currentMission?.defaultSpeed, // Use optional chaining
+      defaultSpeed: currentMission.defaultSpeed || 5, // Use default if not specified
     };
 
     console.log("Generating raster path with params:", params);
-    const newPathSegment = generateRasterPathSegment(params);
-    console.log("Generated path segment:", newPathSegment);
+    let newPathSegment = generateRasterPathSegment(params);
+    
+    // Enhance the path with takeoff and landing waypoints based on safety parameters
+    newPathSegment = addTakeoffAndLanding(
+      newPathSegment, 
+      currentMission.takeoffPoint, 
+      currentMission.safetyParams
+    );
+    
+    console.log("Generated path segment with takeoff and landing:", newPathSegment);
 
     // Dispatch action to add the segment
     dispatch({ type: 'ADD_PATH_SEGMENT', payload: newPathSegment });

@@ -5,7 +5,9 @@ import * as THREE from 'three';
 import { SceneObject, SelectedFaceInfo } from '../../../context/MissionContext';
 import { useMission } from '../../../context/MissionContext';
 import ShipModel from '../models/ShipModel';
-import ShipFallbackModel from '../models/ShipFallbackModel';
+import ShipFallbackModel from '../models/ShipFallbackmodel';
+import DockModel from '../models/DockModel';
+import DockFallbackModel from '../models/DockFallbackModel';
 import { ThreeErrorBoundary } from '../ErrorBoundary';
 
 interface SceneObjectRendererProps {
@@ -166,35 +168,108 @@ const SceneObjectRenderer: React.FC<SceneObjectRendererProps> = ({
           <meshStandardMaterial color={objectColor} />
         </Box>
       );
+    case 'model':
+      // Determine the scale to apply - use the scale property if available, otherwise default to [1,1,1]
+      const modelScale: [number, number, number] = sceneObject.scale 
+        ? [sceneObject.scale.x, sceneObject.scale.y, sceneObject.scale.z]
+        : [1, 1, 1];
+      
+      // For imported models, we would render them here
+      // This is a placeholder until we implement a proper model loader
+      return (
+        <group
+          position={[sceneObject.position.x, sceneObject.position.z, -sceneObject.position.y]}
+          rotation={[
+            THREE.MathUtils.degToRad(sceneObject.rotation?.x || 0),
+            THREE.MathUtils.degToRad(sceneObject.rotation?.z || 0),
+            -THREE.MathUtils.degToRad(sceneObject.rotation?.y || 0)
+          ]}
+          scale={modelScale} // Apply the scaling
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onPointerOver={() => onPointerOver(sceneObject.id)}
+          onPointerOut={() => onPointerOut(sceneObject.id)}
+          userData={{ sceneObjectId: sceneObject.id }}
+        >
+          {/* Here would go the model component, using sceneObject.url to load it */}
+          {/* For now, just show a placeholder box */}
+          <Box args={[1, 1, 1]}>
+            <meshStandardMaterial color={objectColor} wireframe={true} />
+          </Box>
+        </group>
+      );
     case 'ship':
+      // Convert scale object to array for Three.js compatibility
+      const shipScale: [number, number, number] = sceneObject.scale 
+        ? [sceneObject.scale.x, sceneObject.scale.y, sceneObject.scale.z]
+        : [0.1, 0.1, 0.1]; // Default ship scale
+      
       return (
         <ThreeErrorBoundary fallback={
           <ShipFallbackModel 
             position={sceneObject.position} 
             rotation={sceneObject.rotation}
-            scale={0.1}
+            scale={shipScale}
           />
         }>
           <Suspense fallback={
             <ShipFallbackModel 
               position={sceneObject.position} 
               rotation={sceneObject.rotation}
-              scale={0.1}
+              scale={shipScale}
             />
           }>
-            <group
+            <ShipModel 
+              position={sceneObject.position}
+              rotation={sceneObject.rotation}
+              realWorldLength={sceneObject.realWorldLength}
+              heightOffset={sceneObject.heightOffset}
+              scale={shipScale}
               onClick={handleClick}
               onDoubleClick={handleDoubleClick}
               onPointerOver={() => onPointerOver(sceneObject.id)}
               onPointerOut={() => onPointerOut(sceneObject.id)}
               userData={{ sceneObjectId: sceneObject.id }}
-            >
-              <ShipModel 
-                position={sceneObject.position}
-                rotation={sceneObject.rotation}
-                realWorldLength={sceneObject.realWorldLength}
-              />
-            </group>
+            />
+          </Suspense>
+        </ThreeErrorBoundary>
+      );
+    case 'dock':
+      // Convert scale object to array for Three.js compatibility
+      const dockScale: [number, number, number] = sceneObject.scale 
+        ? [sceneObject.scale.x, sceneObject.scale.y, sceneObject.scale.z]
+        : [0.1, 0.1, 0.1]; // Default dock scale
+      
+      // Debugging log to verify scale values are passed correctly
+      console.log(`Rendering dock with scale: [${dockScale[0]}, ${dockScale[1]}, ${dockScale[2]}]`);
+      
+      return (
+        <ThreeErrorBoundary fallback={
+          <DockFallbackModel 
+            position={sceneObject.position} 
+            rotation={sceneObject.rotation}
+            scale={dockScale}
+          />
+        }>
+          <Suspense fallback={
+            <DockFallbackModel 
+              position={sceneObject.position} 
+              rotation={sceneObject.rotation}
+              scale={dockScale}
+            />
+          }>
+            <DockModel 
+              position={sceneObject.position}
+              rotation={sceneObject.rotation}
+              realWorldLength={sceneObject.realWorldLength}
+              heightOffset={sceneObject.heightOffset}
+              scale={dockScale}
+              onClick={handleClick}
+              onDoubleClick={handleDoubleClick}
+              onPointerOver={() => onPointerOver(sceneObject.id)}
+              onPointerOut={() => onPointerOut(sceneObject.id)}
+              userData={{ sceneObjectId: sceneObject.id }}
+            />
           </Suspense>
         </ThreeErrorBoundary>
       );

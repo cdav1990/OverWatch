@@ -5,6 +5,7 @@ import { ActionType } from '../types/mission';
 import { Mission, SafetyParams } from '../types/mission';
 import { SceneObject, SelectedFaceInfo, HardwareState } from '../context/MissionContext';
 import { calculateFOV, calculateSensorDimensions, getDOFCalculations, getEffectiveFocalLength, calculateFieldOfView } from './sensorCalculations';
+import { calculateDistance3D } from './coordinateUtils';
 
 /**
  * Defines different types of AGL (Above Ground Level) references.
@@ -15,6 +16,83 @@ export enum AglReferenceType {
     FACE_AVERAGE = 'face_average',  // Average Z value of selected face
     TAKEOFF_POINT = 'takeoff_point' // Relative to takeoff point Z
 }
+
+/**
+ * Adds proper takeoff and landing waypoints to a mission path based on safety parameters
+ * @param segment The original path segment to enhance
+ * @param takeoffPoint The takeoff point coordinates
+ * @param safetyParams Safety parameters for the mission
+ * @returns A new path segment with takeoff and landing waypoints added
+ */
+export const addTakeoffAndLanding = (
+  segment: PathSegment,
+  takeoffPoint: LocalCoord,
+  safetyParams: SafetyParams
+): PathSegment => {
+  if (!segment.waypoints || segment.waypoints.length === 0) {
+    return segment;
+  }
+
+  const { rtlAltitude, climbSpeed, missionEndAction, climbToAltitude } = safetyParams;
+  
+  // Create a copy of the waypoints to avoid mutating the original
+  const enhancedWaypoints: Waypoint[] = [...segment.waypoints];
+  
+  // Get the first and last waypoints
+  const firstWaypoint = enhancedWaypoints[0];
+  const lastWaypoint = enhancedWaypoints[enhancedWaypoints.length - 1];
+  
+  // Create takeoff sequence (3 waypoints)
+  const takeoffWaypoints: Waypoint[] = [];
+  
+  // 1. Starting position at takeoff point (on ground)
+  takeoffWaypoints.push(createWaypoint(
+    takeoffPoint.x,
+    takeoffPoint.y,
+    0, // Ground level
+    AltitudeReference.RELATIVE,
+    climbSpeed,
+    { fov: 60, aspectRatio: 16/9, pitch: -45 }, // Default camera looking down at angle
+    firstWaypoint.camera?.heading || 0
+  ));
+  
+  // 2. Climb to intermediate altitude
+  takeoffWaypoints.push(createWaypoint(
+    takeoffPoint.x,
+    takeoffPoint.y,
+    climbToAltitude, // Climb to specified intermediate altitude
+    AltitudeReference.RELATIVE,
+    climbSpeed,
+    { fov: 60, aspectRatio: 16/9, pitch: -60 }, // Look down more as ascending
+    firstWaypoint.camera?.heading || 0,
+    -60
+  ));
+  
+  // 3. Climb to mission altitude
+  const missionAltitude = firstWaypoint.local?.z || rtlAltitude;
+  takeoffWaypoints.push(createWaypoint(
+    takeoffPoint.x,
+    takeoffPoint.y,
+    missionAltitude, // Climb to mission altitude
+    AltitudeReference.RELATIVE,
+    climbSpeed,
+    { fov: 60, aspectRatio: 16/9, pitch: -90 }, // Fully looking down
+    firstWaypoint.camera?.heading || 0,
+    -90
+  ));
+  
+  // Add waypoint metadata for visualization
+  takeoffWaypoints.forEach(wp => {
+    wp.displayOptions = { ...wp.displayOptions, phase: 'takeoff' };
+  });
+  
+  // Create a new segment with the enhanced waypoints
+  return {
+    ...segment,
+    waypoints: [...takeoffWaypoints, ...enhancedWaypoints],
+    type: segment.type // Maintain original path type
+  };
+};
 
 /**
  * Defines the parameters needed to generate a raster path.
@@ -30,6 +108,8 @@ export interface RasterParams {
   snakePattern: boolean;    // True for zigzag, false for return-to-start
   defaultSpeed?: number;    // Optional default speed for the segment
   cameraParams?: Partial<CameraParams>; // Optional default camera params
+  cameraPitch?: number;      // Optional camera pitch angle (degrees, e.g., -90 for nadir)
+  cameraYawOffset?: number; // Optional camera yaw relative to path direction (degrees)
 }
 
 /**
@@ -49,7 +129,9 @@ export function generateRasterPathSegment(params: RasterParams): PathSegment {
     orientation,
     snakePattern,
     defaultSpeed = 5,
-    cameraParams = { fov: 60, aspectRatio: 16/9, near: 0.1, far: 1000, heading: 0, pitch: -90 } // Default camera looking down
+    cameraParams = { fov: 60, aspectRatio: 16/9, near: 0.1, far: 1000, heading: 0, pitch: -90 }, // Default camera looking down
+    cameraPitch = -90, // Default to Nadir (looking straight down)
+    cameraYawOffset = 0 // Default to facing forward along path
   } = params;
 
   const waypoints: Waypoint[] = [];
@@ -83,20 +165,22 @@ export function generateRasterPathSegment(params: RasterParams): PathSegment {
       if (isReversePass) {
         passStartX = startX + rowLength;
         passEndX = startX;
-        headingThisPass = -90; // West
+        headingThisPass = 270; // West (270 degrees)
       } else {
         passStartX = startX;
         passEndX = startX + rowLength;
-        headingThisPass = 90; // East
+        headingThisPass = 90; // East (90 degrees)
       }
       
       // Add return-to-start waypoints if not snake pattern and not the first row
       if (!snakePattern && i > 0) {
         const prevPassEndY = startY + (i - 1) * rowSpacing;
         // 1. Go from end of previous pass back to start X, at previous Y
-        waypoints.push(createWaypoint(passStartX, prevPassEndY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass));
+        // Heading for return path is opposite of this pass
+        let returnHeading = (headingThisPass + 180) % 360;
+        waypoints.push(createWaypoint(passStartX, prevPassEndY, altitude, altReference, defaultSpeed, cameraParams, returnHeading, cameraPitch, cameraYawOffset));
         // 2. Go from start X, previous Y to start X, current Y (transition row)
-        waypoints.push(createWaypoint(passStartX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass));
+        waypoints.push(createWaypoint(passStartX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass, cameraPitch, cameraYawOffset));
       }
 
     } else { // Vertical orientation
@@ -105,29 +189,31 @@ export function generateRasterPathSegment(params: RasterParams): PathSegment {
       if (isReversePass) {
         passStartY = startY + rowLength;
         passEndY = startY;
-        headingThisPass = 180; // South
+        headingThisPass = 180; // South (180 degrees)
       } else {
         passStartY = startY;
         passEndY = startY + rowLength;
-        headingThisPass = 0; // North
+        headingThisPass = 0; // North (0 degrees)
       }
 
       // Add return-to-start waypoints if not snake pattern and not the first column
       if (!snakePattern && i > 0) {
         const prevPassEndX = startX + (i - 1) * rowSpacing;
         // 1. Go from end of previous pass back to start Y, at previous X
-        waypoints.push(createWaypoint(prevPassEndX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass));
+        // Heading for return path is opposite of this pass
+        let returnHeading = (headingThisPass + 180) % 360;
+        waypoints.push(createWaypoint(prevPassEndX, passStartY, altitude, altReference, defaultSpeed, cameraParams, returnHeading, cameraPitch, cameraYawOffset));
         // 2. Go from previous X, start Y to current X, start Y (transition column)
-        waypoints.push(createWaypoint(passStartX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass));
+        waypoints.push(createWaypoint(passStartX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass, cameraPitch, cameraYawOffset));
       }
     }
 
     // Add waypoints for the start and end of the main pass
     // If it's the very first point and not snake, or any point in snake
     if (snakePattern || i === 0) {
-         waypoints.push(createWaypoint(passStartX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass));
+         waypoints.push(createWaypoint(passStartX, passStartY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass, cameraPitch, cameraYawOffset));
     }
-    waypoints.push(createWaypoint(passEndX, passEndY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass));
+    waypoints.push(createWaypoint(passEndX, passEndY, altitude, altReference, defaultSpeed, cameraParams, headingThisPass, cameraPitch, cameraYawOffset));
   }
 
   // Create the PathSegment
@@ -151,8 +237,13 @@ function createWaypoint(
   altReference: AltitudeReference,
   speed: number | undefined,
   baseCameraParams: Partial<CameraParams>,
-  heading: number
+  heading: number,
+  cameraPitch: number = -90, // Default to nadir (straight down)
+  cameraYawOffset: number = 0 // Default to 0 (along path direction)
 ): Waypoint {
+  // Apply the camera yaw offset to the heading
+  const cameraHeading = (heading + cameraYawOffset + 360) % 360;
+  
   return {
     id: generateUUID(),
     lat: 0, // Global coords need calculation later if required
@@ -165,8 +256,8 @@ function createWaypoint(
       aspectRatio: baseCameraParams.aspectRatio ?? 16/9,
       near: baseCameraParams.near ?? 0.1,
       far: baseCameraParams.far ?? 1000,
-      heading: heading, // Use calculated heading
-      pitch: baseCameraParams.pitch ?? -90, // Default looking down
+      heading: cameraHeading, // Apply calculated heading with yaw offset
+      pitch: cameraPitch, // Use specified camera pitch
       roll: baseCameraParams.roll ?? 0
     },
     speed: speed,

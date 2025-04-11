@@ -21,7 +21,7 @@ import {
   Menu,
   MenuItem
 } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import { styled, keyframes } from '@mui/material/styles';
 import DroneTelemetry from '../../components/DroneTelemetry/DroneTelemetry';
 import MissionSummaryPanel from '../../components/MissionSummary/MissionSummaryPanel';
 import RosTopicsPanel from '../../components/RosTopicsPanel/RosTopicsPanel';
@@ -39,6 +39,24 @@ import DataUsageIcon from '@mui/icons-material/DataUsage';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useDroneTelemetry } from '../../hooks/useDroneTelemetry';
 import { useSystemHealth } from '../../hooks/useSystemHealth';
+
+// Add new animations for industrial theme
+const scanLineHorizontal = keyframes`
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+`;
+
+const pulse = keyframes`
+  0% { opacity: 0.7; text-shadow: 0 0 10px rgba(79, 195, 247, 0.3); }
+  50% { opacity: 1; text-shadow: 0 0 20px rgba(79, 195, 247, 0.8); }
+  100% { opacity: 0.7; text-shadow: 0 0 10px rgba(79, 195, 247, 0.3); }
+`;
+
+const glow = keyframes`
+  0% { box-shadow: 0 0 5px rgba(79, 195, 247, 0.3); }
+  50% { box-shadow: 0 0 15px rgba(79, 195, 247, 0.6); }
+  100% { box-shadow: 0 0 5px rgba(79, 195, 247, 0.3); }
+`;
 
 // Tab panel component
 interface TabPanelProps {
@@ -68,40 +86,94 @@ const TabPanel = (props: TabPanelProps) => {
   );
 };
 
-// Styled components for enterprise-grade UI
+// Styled components for industrial-grade UI
 const DashboardContainer = styled(Box)(({ theme }) => ({
   padding: theme.spacing(3),
   backgroundColor: 'transparent',
+  backgroundImage: `
+    linear-gradient(rgba(0, 0, 0, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.5) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(30, 40, 50, 0.3) 0%, rgba(6, 10, 14, 0.9) 100%)
+  `,
+  backgroundSize: '40px 40px, 40px 40px, 100% 100%',
   color: theme.palette.common.white,
-  height: 'calc(100vh - 64px)',
+  height: 'calc(100vh - 72px)',
   display: 'flex',
   flexDirection: 'column',
+  position: 'relative',
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'radial-gradient(circle at 50% 70%, rgba(79, 195, 247, 0.1) 0%, rgba(0, 0, 0, 0) 60%)',
+    pointerEvents: 'none',
+  }
 }));
 
 const DashboardTitle = styled(Typography)(({ theme }) => ({
-  fontWeight: 500,
-  fontSize: '1.5rem',
-  letterSpacing: '1px',
+  fontWeight: 700,
+  fontSize: '1.6rem',
+  letterSpacing: '2px',
   marginBottom: theme.spacing(2),
   textTransform: 'uppercase',
   color: '#4fc3f7',
+  fontFamily: '"Rajdhani", "Roboto", sans-serif',
+  animation: `${pulse} 3s infinite ease-in-out`,
+  position: 'relative',
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    bottom: -8,
+    left: 0,
+    width: '60px',
+    height: '2px',
+    background: 'linear-gradient(90deg, rgba(79, 195, 247, 0.8), rgba(79, 195, 247, 0))',
+  }
 }));
 
 const DashboardCard = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(2.5),
-  backgroundColor: 'rgba(21, 21, 21, 0.97)',
+  backgroundColor: 'rgba(10, 15, 20, 0.90)',
   color: theme.palette.common.white,
   borderRadius: '4px',
-  boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.25)',
-  border: '1px solid rgba(255, 255, 255, 0.08)',
+  boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.5)',
+  border: '1px solid rgba(79, 195, 247, 0.15)',
   height: '100%',
   display: 'flex',
   flexDirection: 'column',
   position: 'relative',
-  transition: 'all 0.2s ease-in-out',
+  overflow: 'hidden',
+  transition: 'all 0.3s ease-in-out',
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '1px',
+    background: 'linear-gradient(90deg, rgba(79, 195, 247, 0), rgba(79, 195, 247, 0.5), rgba(79, 195, 247, 0))',
+  },
   '&:hover': {
-    boxShadow: '0px 6px 15px rgba(0, 0, 0, 0.35)',
-    borderColor: 'rgba(79, 195, 247, 0.2)',
+    boxShadow: '0px 6px 25px rgba(0, 0, 0, 0.5)',
+    borderColor: 'rgba(79, 195, 247, 0.3)',
+    '&::after': {
+      opacity: 1,
+    }
+  },
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '2px',
+    background: 'linear-gradient(90deg, rgba(79, 195, 247, 0), rgba(79, 195, 247, 0.5), rgba(79, 195, 247, 0))',
+    opacity: 0,
+    transition: 'opacity 0.3s ease-in-out',
+    animation: `${scanLineHorizontal} 4s infinite linear`,
   }
 }));
 
@@ -110,14 +182,26 @@ const CardHeader = styled(Box)(({ theme }) => ({
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: theme.spacing(2),
+  position: 'relative',
+  paddingBottom: theme.spacing(1),
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    height: '1px',
+    background: 'linear-gradient(90deg, rgba(79, 195, 247, 0.3), rgba(255, 255, 255, 0.05), rgba(79, 195, 247, 0))',
+  }
 }));
 
 const CardTitle = styled(Typography)(({ theme }) => ({
-  fontWeight: 500,
+  fontWeight: 600,
   fontSize: '0.95rem',
-  letterSpacing: '0.5px',
+  letterSpacing: '1px',
   color: 'rgba(255, 255, 255, 0.9)',
   textTransform: 'uppercase',
+  fontFamily: '"Rajdhani", "Roboto", sans-serif',
 }));
 
 const CardContent = styled(Typography)(({ theme }) => ({
@@ -128,110 +212,184 @@ const CardContent = styled(Typography)(({ theme }) => ({
 
 const StyledTabs = styled(Tabs)(({ theme }) => ({
   marginBottom: theme.spacing(2),
+  position: 'relative',
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '1px',
+    background: 'rgba(79, 195, 247, 0.15)',
+  },
   '& .MuiTabs-indicator': {
     backgroundColor: '#4fc3f7',
+    height: '3px',
+    borderRadius: '1px 1px 0 0',
+    boxShadow: '0 0 8px rgba(79, 195, 247, 0.6)',
   },
   '& .MuiTab-root': {
     textTransform: 'none',
     fontWeight: 500,
-    fontSize: '0.9rem',
+    fontSize: '0.95rem',
+    letterSpacing: '0.5px',
     color: 'rgba(255, 255, 255, 0.7)',
+    minHeight: '48px',
     '&.Mui-selected': {
       color: '#4fc3f7',
+      fontWeight: 600,
     },
+    '&:hover': {
+      color: 'rgba(79, 195, 247, 0.9)',
+      backgroundColor: 'rgba(79, 195, 247, 0.05)',
+    }
   },
 }));
 
+// Add new styled components for stats cards
+const StatsCard = styled(DashboardCard)(({ theme }) => ({
+  padding: theme.spacing(2),
+  transition: 'all 0.3s ease-in-out',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+  minHeight: '130px',
+  '&:hover': {
+    animation: `${glow} 2s infinite ease-in-out`,
+  }
+}));
+
+const StatLabel = styled(Typography)(({ theme }) => ({
+  fontSize: '0.85rem',
+  fontWeight: 500,
+  letterSpacing: '0.5px',
+  color: 'rgba(255, 255, 255, 0.7)',
+  textTransform: 'uppercase',
+  marginBottom: theme.spacing(1),
+}));
+
+const StatValue = styled(Typography)(({ theme }) => ({
+  fontSize: '2.5rem',
+  fontWeight: 700,
+  color: '#4fc3f7',
+  fontFamily: '"Rajdhani", "Roboto", sans-serif',
+  letterSpacing: '1px',
+  lineHeight: 1.2,
+  textShadow: '0 0 10px rgba(79, 195, 247, 0.4)',
+}));
+
+// Enhanced StatusIndicator
+type StatusType = 'online' | 'offline' | 'warning';
+
+interface StatusIndicatorProps {
+  status: StatusType;
+}
+
+const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status }) => {
+  const getColor = () => {
+    switch (status) {
+      case 'online':
+        return '#4caf50';
+      case 'offline':
+        return '#f44336';
+      case 'warning':
+        return '#ff9800';
+      default:
+        return '#9e9e9e';
+    }
+  };
+
+  return (
+    <Box
+      sx={{
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        backgroundColor: getColor(),
+        boxShadow: `0 0 8px ${getColor()}`,
+        display: 'inline-block',
+        marginRight: 1.5,
+        position: 'relative',
+        overflow: 'visible',
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          top: -2,
+          left: -2,
+          right: -2,
+          bottom: -2,
+          borderRadius: '50%',
+          border: `1px solid ${getColor()}`,
+          opacity: 0.5,
+          animation: status === 'online' ? 'pulse 2s infinite' : 'none',
+        }
+      }}
+    />
+  );
+};
+
+// Enhanced ActionButton for an industrial look
+const ActionButton = styled(Button)(({ theme }) => ({
+  backgroundColor: 'rgba(79, 195, 247, 0.15)',
+  color: '#4fc3f7',
+  borderRadius: '4px',
+  textTransform: 'none',
+  fontWeight: 500,
+  fontSize: '0.85rem',
+  padding: '6px 16px',
+  border: '1px solid rgba(79, 195, 247, 0.3)',
+  position: 'relative',
+  overflow: 'hidden',
+  '&:hover': {
+    backgroundColor: 'rgba(79, 195, 247, 0.25)',
+    borderColor: 'rgba(79, 195, 247, 0.5)',
+    boxShadow: '0 0 10px rgba(79, 195, 247, 0.3)',
+  },
+  '&:active': {
+    backgroundColor: 'rgba(79, 195, 247, 0.35)',
+  },
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    background: 'linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0))',
+    transform: 'translateY(-100%)',
+    transition: 'transform 0.3s ease-in-out',
+  },
+  '&:hover::before': {
+    transform: 'translateY(100%)',
+  }
+}));
+
+// Enhanced ModalContent for fullscreen panels
 const ModalContent = styled(Box)(({ theme }) => ({
   position: 'absolute',
   top: '50%',
   left: '50%',
   transform: 'translate(-50%, -50%)',
   width: '90%',
-  maxWidth: '1200px',
-  height: '90vh',
-  backgroundColor: 'rgba(21, 21, 21, 0.97)',
-  border: '1px solid rgba(255, 255, 255, 0.08)',
-  boxShadow: '0px 10px 30px rgba(0, 0, 0, 0.5)',
+  height: '90%',
+  backgroundColor: 'rgba(10, 15, 20, 0.97)',
+  borderRadius: '8px',
   padding: theme.spacing(4),
-  borderRadius: '4px',
+  boxShadow: '0px 10px 40px rgba(0, 0, 0, 0.5)',
+  border: '1px solid rgba(79, 195, 247, 0.2)',
+  display: 'flex',
+  flexDirection: 'column',
+  outline: 'none',
   overflow: 'hidden',
-  display: 'flex',
-  flexDirection: 'column',
-}));
-
-const StatsCard = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(2),
-  backgroundColor: 'rgba(21, 21, 21, 0.9)',
-  color: theme.palette.common.white,
-  borderRadius: '4px',
-  boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)',
-  border: '1px solid rgba(255, 255, 255, 0.06)',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'all 0.2s ease-in-out',
-  height: '100%',
-  '&:hover': {
-    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
-    borderColor: 'rgba(79, 195, 247, 0.2)',
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '1px',
+    background: 'linear-gradient(90deg, rgba(79, 195, 247, 0), rgba(79, 195, 247, 0.8), rgba(79, 195, 247, 0))',
   }
-}));
-
-const StatValue = styled(Typography)(({ theme }) => ({
-  fontSize: '2.2rem',
-  fontWeight: 400,
-  marginTop: theme.spacing(1),
-  color: '#4fc3f7',
-}));
-
-const StatLabel = styled(Typography)(({ theme }) => ({
-  fontSize: '0.85rem',
-  fontWeight: 500,
-  color: 'rgba(255, 255, 255, 0.7)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-}));
-
-const ActionButton = styled(Button)(({ theme }) => ({
-  textTransform: 'none',
-  fontWeight: 500,
-  letterSpacing: '0.3px',
-  borderRadius: '4px',
-  padding: theme.spacing(0.75, 2),
-  '&.MuiButton-contained': {
-    backgroundColor: '#4fc3f7',
-    color: 'rgba(0, 0, 0, 0.8)',
-    '&:hover': {
-      backgroundColor: '#29b6f6',
-    },
-  },
-}));
-
-// Define the status type
-type StatusType = 'online' | 'offline' | 'warning';
-
-// Define props for the StatusIndicator
-interface StatusIndicatorProps {
-  status: StatusType;
-}
-
-const StatusIndicator = styled(Box, {
-  shouldForwardProp: (prop) => prop !== 'status'
-})<StatusIndicatorProps>(({ theme, status }) => ({
-  display: 'inline-block',
-  width: '10px',
-  height: '10px',
-  borderRadius: '50%',
-  marginRight: theme.spacing(1),
-  backgroundColor: 
-    status === 'online' ? '#4caf50' :
-    status === 'warning' ? '#ff9800' : 
-    '#f44336',
-  boxShadow: status === 'online' ? '0 0 6px #4caf50' : 
-            status === 'warning' ? '0 0 6px #ff9800' : 
-            '0 0 6px #f44336',
 }));
 
 // Custom expandable panel component
@@ -559,7 +717,21 @@ const Dashboard = () => {
 
   return (
     <DashboardContainer>
-      <Box display="flex" justifyContent="space-between" alignItems="center">
+      {/* Scan line effect for top of dashboard */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 40,
+          left: 0,
+          right: 0,
+          height: '1px',
+          background: 'linear-gradient(90deg, rgba(79, 195, 247, 0), rgba(79, 195, 247, 0.3), rgba(79, 195, 247, 0))',
+          opacity: 0.7,
+          zIndex: 0,
+        }}
+      />
+      
+      <Box display="flex" justifyContent="space-between" alignItems="center" position="relative" zIndex={1}>
         <DashboardTitle variant="h4">
           Dashboard
         </DashboardTitle>
@@ -569,11 +741,22 @@ const Dashboard = () => {
               size="small"
               sx={{ 
                 color: 'rgba(255, 255, 255, 0.7)',
-                mr: 1,
-                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.1)' }
+                mr: 1.5,
+                '&:hover': { 
+                  backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                  color: '#4fc3f7',
+                }
               }}
             >
-              <Badge badgeContent={2} color="error">
+              <Badge 
+                badgeContent={2} 
+                color="error"
+                sx={{
+                  '& .MuiBadge-badge': {
+                    boxShadow: '0 0 5px rgba(244, 67, 54, 0.5)',
+                  }
+                }}
+              >
                 <NotificationsIcon />
               </Badge>
             </IconButton>
@@ -585,7 +768,24 @@ const Dashboard = () => {
               disabled={isRefreshing}
               sx={{ 
                 color: 'rgba(255, 255, 255, 0.7)',
-                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.1)' }
+                position: 'relative',
+                overflow: 'hidden',
+                '&:hover': { 
+                  backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                  color: '#4fc3f7', 
+                },
+                '&::after': {
+                  content: isRefreshing ? '""' : 'none',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  borderRadius: '50%',
+                  border: '2px solid transparent',
+                  borderTopColor: '#4fc3f7',
+                  animation: 'spin 1s linear infinite',
+                }
               }}
             >
               <RefreshIcon />
@@ -598,9 +798,13 @@ const Dashboard = () => {
         <LinearProgress 
           sx={{ 
             mb: 2, 
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            mt: 1,
+            height: '2px',
+            backgroundColor: 'rgba(79, 195, 247, 0.1)',
             '& .MuiLinearProgress-bar': {
-              backgroundColor: '#4fc3f7'
+              backgroundColor: '#4fc3f7',
+              backgroundImage: 'linear-gradient(90deg, rgba(79, 195, 247, 0.5), #4fc3f7, rgba(79, 195, 247, 0.5))',
+              boxShadow: '0 0 8px rgba(79, 195, 247, 0.5)',
             }
           }} 
         />
@@ -637,7 +841,11 @@ const Dashboard = () => {
                     variant="h5" 
                     sx={{ 
                       color: isConnected ? '#4caf50' : '#f44336',
-                      fontWeight: 500
+                      fontWeight: 500,
+                      textShadow: isConnected 
+                        ? '0 0 10px rgba(76, 175, 80, 0.5)' 
+                        : '0 0 10px rgba(244, 67, 54, 0.5)',
+                      fontFamily: '"Rajdhani", "Roboto", sans-serif',
                     }}
                   >
                     {isConnected ? 'Connected' : 'Disconnected'}
@@ -649,24 +857,52 @@ const Dashboard = () => {
               <StatsCard>
                 <StatLabel>GPS Satellites</StatLabel>
                 <StatValue>12</StatValue>
-                <Typography variant="caption" sx={{ color: '#4caf50' }}>
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    color: '#4caf50',
+                    textShadow: '0 0 5px rgba(76, 175, 80, 0.5)',
+                    fontWeight: 500,
+                    letterSpacing: '0.5px'
+                  }}
+                >
                   RTK Fixed
                 </Typography>
               </StatsCard>
             </Box>
 
             {/* System Health Panel */}
-            <Box sx={{ flex: { xs: '100%', md: '30%' } }}>
-              <ExpandablePanel title="System Health">
+            <Box sx={{ flex: { xs: '100%', md: '48%' } }}>
+              <ExpandablePanel title="SYSTEM HEALTH">
                 <Box sx={{ p: 1 }}>
                   {isSystemHealthLoading && (
                     <Box display="flex" justifyContent="center" my={2}>
-                      <CircularProgress size={24} sx={{ color: '#4fc3f7' }} />
+                      <CircularProgress 
+                        size={24} 
+                        sx={{ 
+                          color: '#4fc3f7',
+                          '& .MuiCircularProgress-circle': {
+                            strokeWidth: 5,
+                            strokeLinecap: 'round',
+                          } 
+                        }} 
+                      />
                     </Box>
                   )}
                   
                   {systemHealthError && (
-                    <Alert severity="error" sx={{ mb: 2, backgroundColor: 'rgba(244, 67, 54, 0.1)' }}>
+                    <Alert 
+                      severity="error" 
+                      sx={{ 
+                        mb: 2, 
+                        backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                        border: '1px solid rgba(244, 67, 54, 0.3)',
+                        color: '#f44336',
+                        '& .MuiAlert-icon': {
+                          color: '#f44336'
+                        }
+                      }}
+                    >
                       {systemHealthError}
                     </Alert>
                   )}
@@ -675,9 +911,9 @@ const Dashboard = () => {
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box display="flex" alignItems="center">
                         <SpeedIcon fontSize="small" sx={{ mr: 1, color: '#4fc3f7', opacity: 0.8 }} />
-                        <Typography variant="body2">CPU Usage</Typography>
+                        <Typography variant="body2" fontWeight={500}>CPU Usage</Typography>
                       </Box>
-                      <Typography variant="body2">{systemHealth.cpu.toFixed(1)}%</Typography>
+                      <Typography variant="body2" fontFamily="'Roboto Mono', monospace">{systemHealth.cpu.toFixed(1)}%</Typography>
                     </Box>
                     <LinearProgress 
                       variant="determinate" 
@@ -689,7 +925,9 @@ const Dashboard = () => {
                         backgroundColor: 'rgba(255,255,255,0.1)',
                         '& .MuiLinearProgress-bar': {
                           backgroundColor: systemHealth.cpu > 80 ? '#f44336' : 
-                                          systemHealth.cpu > 60 ? '#ff9800' : '#4caf50'
+                                          systemHealth.cpu > 60 ? '#ff9800' : '#4caf50',
+                          boxShadow: systemHealth.cpu > 80 ? '0 0 8px rgba(244, 67, 54, 0.5)' : 
+                                    systemHealth.cpu > 60 ? '0 0 8px rgba(255, 152, 0, 0.5)' : '0 0 8px rgba(76, 175, 80, 0.5)',
                         }
                       }}
                     />
@@ -699,9 +937,9 @@ const Dashboard = () => {
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box display="flex" alignItems="center">
                         <MemoryIcon fontSize="small" sx={{ mr: 1, color: '#4fc3f7', opacity: 0.8 }} />
-                        <Typography variant="body2">Memory Usage</Typography>
+                        <Typography variant="body2" fontWeight={500}>Memory Usage</Typography>
                       </Box>
-                      <Typography variant="body2">{systemHealth.memory.toFixed(1)}%</Typography>
+                      <Typography variant="body2" fontFamily="'Roboto Mono', monospace">{systemHealth.memory.toFixed(1)}%</Typography>
                     </Box>
                     <LinearProgress 
                       variant="determinate" 
@@ -713,7 +951,9 @@ const Dashboard = () => {
                         backgroundColor: 'rgba(255,255,255,0.1)',
                         '& .MuiLinearProgress-bar': {
                           backgroundColor: systemHealth.memory > 80 ? '#f44336' : 
-                                          systemHealth.memory > 60 ? '#ff9800' : '#4caf50'
+                                          systemHealth.memory > 60 ? '#ff9800' : '#4caf50',
+                          boxShadow: systemHealth.memory > 80 ? '0 0 8px rgba(244, 67, 54, 0.5)' : 
+                                    systemHealth.memory > 60 ? '0 0 8px rgba(255, 152, 0, 0.5)' : '0 0 8px rgba(76, 175, 80, 0.5)',
                         }
                       }}
                     />
@@ -723,9 +963,9 @@ const Dashboard = () => {
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box display="flex" alignItems="center">
                         <StorageIcon fontSize="small" sx={{ mr: 1, color: '#4fc3f7', opacity: 0.8 }} />
-                        <Typography variant="body2">Storage Usage</Typography>
+                        <Typography variant="body2" fontWeight={500}>Storage Usage</Typography>
                       </Box>
-                      <Typography variant="body2">{systemHealth.storage.toFixed(1)}%</Typography>
+                      <Typography variant="body2" fontFamily="'Roboto Mono', monospace">{systemHealth.storage.toFixed(1)}%</Typography>
                     </Box>
                     <LinearProgress 
                       variant="determinate" 
@@ -737,7 +977,9 @@ const Dashboard = () => {
                         backgroundColor: 'rgba(255,255,255,0.1)',
                         '& .MuiLinearProgress-bar': {
                           backgroundColor: systemHealth.storage > 80 ? '#f44336' : 
-                                          systemHealth.storage > 60 ? '#ff9800' : '#4caf50'
+                                          systemHealth.storage > 60 ? '#ff9800' : '#4caf50',
+                          boxShadow: systemHealth.storage > 80 ? '0 0 8px rgba(244, 67, 54, 0.5)' : 
+                                    systemHealth.storage > 60 ? '0 0 8px rgba(255, 152, 0, 0.5)' : '0 0 8px rgba(76, 175, 80, 0.5)',
                         }
                       }}
                     />
@@ -747,9 +989,9 @@ const Dashboard = () => {
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box display="flex" alignItems="center">
                         <DataUsageIcon fontSize="small" sx={{ mr: 1, color: '#4fc3f7', opacity: 0.8 }} />
-                        <Typography variant="body2">Network Bandwidth</Typography>
+                        <Typography variant="body2" fontWeight={500}>Network Bandwidth</Typography>
                       </Box>
-                      <Typography variant="body2">{systemHealth.network.toFixed(1)}%</Typography>
+                      <Typography variant="body2" fontFamily="'Roboto Mono', monospace">{systemHealth.network.toFixed(1)}%</Typography>
                     </Box>
                     <LinearProgress 
                       variant="determinate" 
@@ -760,7 +1002,10 @@ const Dashboard = () => {
                         borderRadius: 2,
                         backgroundColor: 'rgba(255,255,255,0.1)',
                         '& .MuiLinearProgress-bar': {
-                          backgroundColor: systemHealth.network > 80 ? '#ff9800' : '#4caf50'
+                          backgroundColor: systemHealth.network > 80 ? '#f44336' : 
+                                          systemHealth.network > 60 ? '#ff9800' : '#4caf50',
+                          boxShadow: systemHealth.network > 80 ? '0 0 8px rgba(244, 67, 54, 0.5)' : 
+                                    systemHealth.network > 60 ? '0 0 8px rgba(255, 152, 0, 0.5)' : '0 0 8px rgba(76, 175, 80, 0.5)',
                         }
                       }}
                     />
@@ -825,8 +1070,8 @@ const Dashboard = () => {
             </Box>
 
             {/* Recent Missions Panel */}
-            <Box sx={{ flex: { xs: '100%', md: '65%' } }}>
-              <ExpandablePanel title="Recent Missions">
+            <Box sx={{ flex: { xs: '100%', md: '48%' } }}>
+              <ExpandablePanel title="RECENT MISSIONS">
                 <Box sx={{ p: 1 }}>
                   {recentMissions.map((mission, index) => (
                     <MissionItem 
@@ -837,6 +1082,7 @@ const Dashboard = () => {
                       description={mission.description}
                     />
                   ))}
+                  
                   <Box display="flex" justifyContent="flex-end" mt={2}>
                     <ActionButton
                       variant="contained"
@@ -850,22 +1096,33 @@ const Dashboard = () => {
               </ExpandablePanel>
             </Box>
 
-            {/* Environmental Status */}
             <Box sx={{ width: '100%' }}>
               <Alert 
                 severity="success"
                 icon={<CheckCircleOutlineIcon />}
                 sx={{
-                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                  backgroundColor: 'rgba(76, 175, 80, 0.08)',
                   color: '#4caf50',
                   border: '1px solid rgba(76, 175, 80, 0.2)',
+                  borderRadius: '4px',
+                  position: 'relative',
+                  overflow: 'hidden',
                   '& .MuiAlert-icon': {
                     color: '#4caf50'
+                  },
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '1px',
+                    background: 'linear-gradient(90deg, rgba(76, 175, 80, 0), rgba(76, 175, 80, 0.5), rgba(76, 175, 80, 0))',
                   }
                 }}
               >
-                <AlertTitle>All Systems Operational</AlertTitle>
-                Current environment: <strong>Production</strong> — System status checks passing on all nodes
+                <AlertTitle sx={{ fontWeight: 600 }}>All Systems Operational</AlertTitle>
+                Current environment: <Box component="span" sx={{ fontWeight: 600 }}>Production</Box> — System status checks passing on all nodes
               </Alert>
             </Box>
           </Box>

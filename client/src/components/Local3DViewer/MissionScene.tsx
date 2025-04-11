@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { useThree, useFrame, ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, Grid, Sky, TransformControls } from '@react-three/drei';
+import { OrbitControls, Grid, Sky, TransformControls, Environment, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useMission } from '../../context/MissionContext';
 import { LocalCoord, Waypoint, PathSegment, PathType } from '../../types/mission';
@@ -12,17 +12,19 @@ import SceneObjectRenderer from './objects/SceneObjectRenderer';
 import HighlightFaceIndicator from './indicators/HighlightFaceIndicator';
 import DroneModel from './drone/DroneModel';
 import { CameraFrustumProps } from './drone/CameraFrustum';
-import { mapLocalCoordsToThree, threeToLocalCoord } from './utils/threeHelpers';
+import { mapLocalCoordsToThree, threeToLocalCoord, localCoordToThree } from './utils/threeHelpers';
 import MissionAreaIndicator from './indicators/MissionAreaIndicator';
 import { BufferGeometry, Float32BufferAttribute } from 'three';
 import ObjectTransformControls from './controls/ObjectTransformControls';
-import { SceneSettings } from './types/SceneSettings';
+import { SceneSettings, SceneTheme, SCENE_THEMES, GRID_PRESETS } from '../Local3DViewer/types/SceneSettings';
+import { Suspense } from 'react';
+import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
 
 // Add constants for drag smoothing
 const DRAG_SMOOTHING_FACTOR = 0.25; // Lower = smoother/slower, higher = more responsive
 const DRAG_SPRING_CONFIG = { mass: 1.5, tension: 80, friction: 40 }; // More mass, less tension, more friction
 
-// Modify the MissionScene component props to include selectedFace state
+// Modify the MissionScene component props to include selectedFace state and gimbalPitch
 interface MissionSceneProps {
   liveDronePosition?: LocalCoord | null;
   liveDroneRotation?: { heading: number; pitch: number; roll: number; } | null;
@@ -30,6 +32,8 @@ interface MissionSceneProps {
   onDroneDoubleClick: (event: ThreeEvent<MouseEvent>) => void;
   cameraFollowsDrone: boolean;
   visualizationSettings?: CameraFrustumProps['visualization'];
+  gimbalPitch?: number; // Add gimbalPitch prop
+  droneRotation?: { heading: number; pitch: number; roll: number; };
 }
 
 // Add this interface near the top of the file where other interfaces are defined, before the component
@@ -67,8 +71,9 @@ const GroundPlane: React.FC<{
   useEffect(() => {
     if (groundRef.current && groundRef.current.material) {
       const material = groundRef.current.material as THREE.MeshStandardMaterial;
-      material.opacity = sceneSettings.groundOpacity || 0.3;
-      material.transparent = true;
+      const opacity = sceneSettings.groundOpacity ?? 1.0; // Default to 1.0 (opaque)
+      material.opacity = opacity;
+      material.transparent = opacity < 1.0; // Only transparent if opacity is less than 1
       material.side = sceneSettings.showBelowGround ? THREE.DoubleSide : THREE.FrontSide;
       material.needsUpdate = true;
     }
@@ -84,12 +89,14 @@ const GroundPlane: React.FC<{
       onPointerDown={onPointerDown}
       receiveShadow
     >
-      <planeGeometry args={[10000, 10000]} />
+      <planeGeometry args={[3500, 3500]} />
       <meshStandardMaterial 
         color="#333333" 
-        transparent={true}
-        opacity={sceneSettings.groundOpacity || 0.3} // Use configured opacity with fallback
+        // Opacity/Transparency set via useEffect based on settings
+        opacity={sceneSettings.groundOpacity ?? 1.0} // Initial value
+        transparent={(sceneSettings.groundOpacity ?? 1.0) < 1.0} // Initial value
         side={sceneSettings.showBelowGround ? THREE.DoubleSide : THREE.FrontSide} // Show both sides when enabled
+        // Removed depthWrite={false} and renderOrder
       />
     </mesh>
   );
@@ -102,31 +109,188 @@ const WaterSurface: React.FC<{
   // Skip if water is disabled
   if (!sceneSettings.waterEnabled) return null;
   
+  // Performance monitoring
+  const fpsMonitor = useRef({ frames: 0, time: 0, fps: 60 });
+  const lastUpdateTime = useRef(0);
+  const skipFrameCount = useRef(0);
+  
   // Create a texture for water with improved performance
   const waterTexture = useMemo(() => {
-    const texture = new THREE.TextureLoader().load('/textures/waternormals.jpg');
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set((sceneSettings.waterWaveScale || 1.0) * 10, (sceneSettings.waterWaveScale || 1.0) * 10);
-    return texture;
+    try {
+      const texture = new THREE.TextureLoader().load('/textures/waternormals.jpg', 
+        // Success callback
+        undefined,
+        // Error callback
+        (error) => {
+          console.error('[WaterSurface] Error loading water texture:', error);
+        }
+      );
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set((sceneSettings.waterWaveScale || 1.0) * 10, (sceneSettings.waterWaveScale || 1.0) * 10);
+      
+      // Optimize texture for performance
+      texture.generateMipmaps = true;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.anisotropy = 4; // Good balance between quality and performance
+      
+      return texture;
+    } catch (error) {
+      console.error('[WaterSurface] Error creating water texture:', error);
+      return null;
+    }
   }, [sceneSettings.waterWaveScale]);
   
   // Use ref for animation
   const waterRef = useRef<THREE.Mesh>(null);
   const time = useRef(0);
 
-  // Animate water waves based on speed setting
+  // Calculate adaptive geometry resolution based on performance
+  const [geometryResolution, setGeometryResolution] = useState({ width: 100, height: 100 });
+  
+  // Dynamically adjust geometry resolution based on FPS
+  useEffect(() => {
+    // Start with moderate resolution
+    setGeometryResolution({ width: 100, height: 100 });
+    
+    // Get GPU capabilities to determine initial quality
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl');
+    
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        console.log('[WaterSurface] GPU detected:', renderer);
+        
+        // Set initial quality based on GPU capabilities
+        if (renderer.includes('NVIDIA') || renderer.includes('AMD') || renderer.includes('Radeon')) {
+          // Higher-end GPU
+          setGeometryResolution({ width: 150, height: 150 });
+        } else if (renderer.includes('Intel')) {
+          // Integrated GPU
+          setGeometryResolution({ width: 80, height: 80 });
+        } else {
+          // Unknown or mobile GPU - be conservative
+          setGeometryResolution({ width: 60, height: 60 });
+        }
+      }
+    }
+  }, []);
+
+  // Animate water waves based on speed setting with performance optimizations
   useFrame((_, delta) => {
-    if (waterRef.current && waterRef.current.material) {
+    // Update FPS tracking
+    fpsMonitor.current.frames++;
+    fpsMonitor.current.time += delta;
+    
+    // Calculate FPS every second
+    if (fpsMonitor.current.time >= 1.0) {
+      const fps = fpsMonitor.current.frames / fpsMonitor.current.time;
+      fpsMonitor.current.fps = fps;
+      fpsMonitor.current.frames = 0;
+      fpsMonitor.current.time = 0;
+      
+      // Dynamically adjust geometry resolution based on performance
+      if (fps < 30) {
+        // Performance is struggling - reduce quality
+        setGeometryResolution(prev => ({
+          width: Math.max(40, prev.width - 10),
+          height: Math.max(40, prev.height - 10)
+        }));
+      } else if (fps > 55 && (geometryResolution.width < 150 || geometryResolution.height < 150)) {
+        // Performance is good - can increase quality slightly
+        setGeometryResolution(prev => ({
+          width: Math.min(150, prev.width + 5),
+          height: Math.min(150, prev.height + 5)
+        }));
+      }
+    }
+    
+    // Skip frames when FPS is low to maintain performance
+    const targetFps = 30;
+    const currentTime = performance.now();
+    const timeSinceLastUpdate = currentTime - lastUpdateTime.current;
+    const targetFrameTime = 1000 / targetFps;
+    
+    // Implement frame skipping based on current FPS
+    if (fpsMonitor.current.fps < 25) {
+      // Skip every other frame
+      skipFrameCount.current++;
+      if (skipFrameCount.current % 2 !== 0) {
+        return;
+      }
+    } else if (fpsMonitor.current.fps < 40) {
+      // Skip every 3rd frame
+      skipFrameCount.current++;
+      if (skipFrameCount.current % 3 === 0) {
+        return;
+      }
+    }
+    
+    // Update water animation with fixed timestep for consistent speed
+    if (waterRef.current && waterRef.current.material && waterTexture) {
+      // Update with consistent timestep (not tied directly to frame rate)
+      // This ensures waves move at the same speed regardless of FPS
       time.current += delta * (sceneSettings.waterWaveSpeed || 0.5);
+      
       // Apply time to displacement map
       const material = waterRef.current.material as THREE.MeshStandardMaterial;
       if (material.displacementMap) {
-        material.displacementMap.offset.set(0, time.current * 0.05);
-        material.needsUpdate = true;
+        material.displacementMap.offset.set(0, time.current * 0.15); // Increased from 0.05 to 0.15 for more noticeable movement
+        
+        // Only update material when needed to reduce GPU work - reduce threshold for more frequent updates
+        if (timeSinceLastUpdate > targetFrameTime / 2) {
+          material.needsUpdate = true;
+          lastUpdateTime.current = currentTime;
+        }
       }
     }
   });
+  
+  // Determine material properties based on settings
+  const materialProps = useMemo(() => {
+    // Base properties
+    const props = {
+      color: sceneSettings.waterColor || '#4fc3f7',
+      transparent: true,
+      opacity: sceneSettings.waterOpacity || 0.6,
+      metalness: 0.7, // Reduced to make waves more visible
+      roughness: 0.25, // Increased to enhance wave highlights
+      side: THREE.FrontSide, // Changed to FrontSide for better performance (from DoubleSide)
+      displacementMap: waterTexture || undefined,
+      displacementScale: waterTexture ? (sceneSettings.waterWaveScale || 1.0) * 1.2 : 0, // Multiplier to enhance waves
+      envMapIntensity: 1.5, // Reduced from 2.5 for better performance
+      flatShading: false, // Keep smooth shading for better wave appearance
+    };
+    
+    // Configure depth behavior based on grid visibility settings
+    if (sceneSettings.gridShowUnderWater && props.opacity < 0.95) {
+      return {
+        ...props,
+        // Grid can be seen through water
+        depthWrite: false,  // Don't write to depth buffer (allows transparent viewing)
+        depthTest: true,    // Still test against depth buffer
+        // Add refractive properties
+        refractionRatio: 0.8,
+        reflectivity: 0.2,
+      };
+    } else {
+      return {
+        ...props,
+        // Water is opaque to the grid beneath
+        depthWrite: true,   // Write to depth buffer
+        depthTest: true,    // Test against depth buffer
+      };
+    }
+  }, [
+    sceneSettings.waterColor,
+    sceneSettings.waterOpacity,
+    sceneSettings.waterWaveScale,
+    sceneSettings.gridShowUnderWater,
+    waterTexture
+  ]);
   
   // Force rerender on settings change
   useEffect(() => {
@@ -135,35 +299,63 @@ const WaterSurface: React.FC<{
       // Update material properties from settings
       const material = waterRef.current.material as THREE.MeshStandardMaterial;
       if (material) {
-        material.color.set(sceneSettings.waterColor || '#4fc3f7');
-        material.opacity = sceneSettings.waterOpacity || 0.6;
+        material.color.set(materialProps.color);
+        material.opacity = materialProps.opacity;
+        material.depthWrite = materialProps.depthWrite;
+        material.depthTest = materialProps.depthTest;
         material.needsUpdate = true;
       }
     }
-  }, [
-    sceneSettings.waterEnabled, 
-    sceneSettings.waterColor, 
-    sceneSettings.waterOpacity
-  ]);
+  }, [materialProps]);
   
   return (
     <mesh 
       ref={waterRef}
       rotation={[-Math.PI / 2, 0, 0]} 
-      position={[0, -0.05, 0]}
+      position={[0, 0, 0]} // Position at exactly y=0 (sea level)
       receiveShadow={sceneSettings.shadowsEnabled}
+      frustumCulled={true} // Enable frustum culling for performance
     >
-      <planeGeometry args={[10000, 10000, 100, 100]} />
-      <meshStandardMaterial
-        color={sceneSettings.waterColor || '#4fc3f7'}
-        transparent={true}
-        opacity={sceneSettings.waterOpacity || 0.6}
-        metalness={0.8}
-        roughness={0.2}
-        side={THREE.DoubleSide}
-        displacementMap={waterTexture}
-        displacementScale={0.5}
+      <planeGeometry 
+        args={[3500, 3500, geometryResolution.width, geometryResolution.height]} // Reduced from 5000 to 3500 for better performance
+        // These attributes improve GPU performance for complex geometries
+        onUpdate={(geometry) => {
+          geometry.computeVertexNormals();
+          
+          // Add some noise to the vertices for additional wave detail
+          if (fpsMonitor.current.fps > 30) {
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+              // Only adjust y position (which is the height of the waves) and only if not on the edge
+              const x = positions[i];
+              const z = positions[i+2];
+              const distFromCenter = Math.sqrt(x*x + z*z);
+              
+              // Only apply to interior vertices to avoid edge artifacts
+              if (distFromCenter < 3200) {
+                const noise = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 2.0;
+                positions[i+1] += noise;
+              }
+            }
+            geometry.attributes.position.needsUpdate = true;
+          }
+          
+          if (fpsMonitor.current.fps < 30) {
+            // Further optimize by simplifying buffers
+            geometry.deleteAttribute('uv2');
+            
+            // Properly cast the attribute types before accessing usage property
+            const posAttr = geometry.attributes.position as THREE.BufferAttribute;
+            const normAttr = geometry.attributes.normal as THREE.BufferAttribute;
+            const uvAttr = geometry.attributes.uv as THREE.BufferAttribute;
+            
+            if (posAttr && posAttr.isBufferAttribute) posAttr.usage = THREE.StaticDrawUsage;
+            if (normAttr && normAttr.isBufferAttribute) normAttr.usage = THREE.StaticDrawUsage;
+            if (uvAttr && uvAttr.isBufferAttribute) uvAttr.usage = THREE.StaticDrawUsage;
+          }
+        }}
       />
+      <meshStandardMaterial {...materialProps} />
     </mesh>
   );
 };
@@ -215,104 +407,304 @@ const SelectedFaceVisualizer: React.FC = () => {
                 transparent 
                 opacity={0.6} 
                 side={THREE.DoubleSide} // Render both sides
-                depthWrite={false} // Prevent interference with other transparent objects
             />
         </mesh>
     );
 };
 
-// Completely refactor the EnhancedGrid component to avoid TypeScript issues
-const EnhancedGrid: React.FC<{
+// Replace the EnhancedGrid component with this new HierarchicalGrid
+const HierarchicalGrid: React.FC<{
   sceneSettings: SceneSettings;
 }> = ({ sceneSettings }) => {
-  // Skip if grid is hidden
-  if (!sceneSettings.gridVisible) return null;
-  
-  // Safe grid size and fade distance that are guaranteed to be numbers
-  const gridSize = typeof sceneSettings.gridSize === 'number' ? sceneSettings.gridSize : 1000;
-  const fadeDistance = typeof sceneSettings.gridFadeDistance === 'number' ? sceneSettings.gridFadeDistance : 1000;
-  
-  // Calculate cell size based on units
-  const cellSize = sceneSettings.gridUnit === 'feet' ? 3.28084 : 1;
-  
-  // Calculate section size (for major grid lines)
-  const sectionSize = sceneSettings.gridUnit === 'feet' ? 32.8084 : 10;
-  
-  // Create a reference to the grid to efficiently update
-  const gridRef = useRef<THREE.Group>(null);
-  
-  // Update grid rotation to ensure it stays flat and stable
-  useEffect(() => {
-    if (gridRef.current) {
-      gridRef.current.rotation.set(-Math.PI / 2, 0, 0);
+  // Get grid size based on scene settings
+  const gridSize = useMemo(() => {
+    // Convert if needed
+    if (sceneSettings.gridUnit === 'meters') {
+      return sceneSettings.gridSize; // Already in meters
+    } else {
+      return feetToMeters(sceneSettings.gridSize); // Convert feet to meters for THREE.js
     }
-  }, []);
+  }, [sceneSettings.gridSize, sceneSettings.gridUnit]);
 
-  // For better visibility, use a larger offset from ground
-  const gridOffset = 0.02; // Slightly above ground to avoid z-fighting
+  // Calculate offset for grid based on water settings
+  const gridOffset = useMemo(() => {
+    if (sceneSettings.waterEnabled && !sceneSettings.gridShowUnderWater) {
+      return 0.01; // Position just above water level
+    } else if (sceneSettings.waterEnabled && sceneSettings.gridShowUnderWater) {
+      return -0.05; // Position just below water level
+    } else {
+      return 0; // Default position
+    }
+  }, [sceneSettings.waterEnabled, sceneSettings.gridShowUnderWater]);
 
-  // Safe half grid size for axes
-  const halfGridSize = Math.floor(gridSize / 2);
+  // Calculate grid divisions and cell sizes
+  const { 
+    minorGridSize,
+    majorGridSize,
+    minorDivisions,
+    majorDivisions
+  } = useMemo(() => {
+    // Main grid parameters
+    const minorGridSize = gridSize;
+    const minorDivisions = sceneSettings.gridDivisions;
+    
+    // Calculate major grid parameters based on the interval
+    const interval = sceneSettings.gridMajorLineInterval || 5;
+    const majorDivisions = Math.ceil(minorDivisions / interval);
+    const majorGridSize = minorGridSize;
+    
+    return {
+      minorGridSize,
+      majorGridSize,
+      minorDivisions,
+      majorDivisions
+    };
+  }, [gridSize, sceneSettings.gridDivisions, sceneSettings.gridMajorLineInterval]);
+
+  // Calculate half grid size for axis lines
+  const halfGridSize = gridSize / 2;
+
+  // Check if grid is visible
+  const isGridVisible = useMemo(() => {
+    return sceneSettings.gridVisible && 
+      !(sceneSettings.waterEnabled && !sceneSettings.gridShowUnderWater);
+  }, [sceneSettings.gridVisible, sceneSettings.waterEnabled, sceneSettings.gridShowUnderWater]);
+
+  // Custom minor grid material for enhanced visibility
+  const minorGridMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      color: new THREE.Color(sceneSettings.gridMinorColor || '#CCCCCC'),
+      transparent: true,
+      opacity: sceneSettings.gridEnhancedVisibility ? 0.8 : 0.6,
+      depthWrite: false, // Don't write to depth buffer to ensure visibility
+      fog: false,
+    });
+  }, [sceneSettings.gridMinorColor, sceneSettings.gridEnhancedVisibility]);
+
+  // Custom major grid material with increased visibility
+  const majorGridMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      color: new THREE.Color(sceneSettings.gridMajorColor || '#FFFFFF'),
+      transparent: true,
+      opacity: sceneSettings.gridEnhancedVisibility ? 1.0 : 0.8,
+      depthWrite: false,
+      linewidth: 2, // Note: this may not work in WebGL, but included for future compatibility
+      fog: false,
+    });
+  }, [sceneSettings.gridMajorColor, sceneSettings.gridEnhancedVisibility]);
+
+  // Custom center line material
+  const centerLineMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      color: new THREE.Color(sceneSettings.gridColorCenterLine),
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+      linewidth: 3, // Note: this may not work in WebGL, but included for future compatibility
+      fog: false,
+    });
+  }, [sceneSettings.gridColorCenterLine]);
+
+  // Custom grid helper for minor grid lines with fading effect
+  const minorGridHelper = useMemo(() => {
+    if (!isGridVisible) return null;
+    
+    // Create standard THREE.js GridHelper
+    const helper = new THREE.GridHelper(
+      minorGridSize,
+      minorDivisions,
+      new THREE.Color(sceneSettings.gridColorCenterLine), // Center line color
+      new THREE.Color(sceneSettings.gridMinorColor) // Minor grid color
+    );
+    
+    // Set material properties
+    helper.material = minorGridMaterial;
+    
+    // Position adjustment if needed
+    helper.position.y = gridOffset + 0.1524; // Raise grid by 6 inches (0.1524m)
+    
+    // Rotation adjustment if needed (grid is on XZ plane by default)
+    helper.rotation.x = 0;
+    
+    return helper;
+  }, [
+    isGridVisible, 
+    minorGridSize, 
+    minorDivisions, 
+    sceneSettings.gridMinorColor, 
+    sceneSettings.gridColorCenterLine,
+    minorGridMaterial,
+    gridOffset
+  ]);
+
+  // Custom grid helper for major grid lines
+  const majorGridHelper = useMemo(() => {
+    if (!isGridVisible) return null;
+    
+    // Create a GridHelper for major grid lines
+    const helper = new THREE.GridHelper(
+      majorGridSize,
+      majorDivisions,
+      new THREE.Color(sceneSettings.gridColorCenterLine), // Center line color
+      new THREE.Color(sceneSettings.gridMajorColor) // Major grid color
+    );
+    
+    // Set material properties
+    helper.material = majorGridMaterial;
+    
+    // Position adjustment if needed
+    helper.position.y = gridOffset + 0.1524 + 0.01; // Raise grid by 6 inches, plus a tiny bit more for major lines
+    
+    // Rotation adjustment if needed (grid is on XZ plane by default)
+    helper.rotation.x = 0;
+    
+    return helper;
+  }, [
+    isGridVisible,
+    majorGridSize, 
+    majorDivisions, 
+    sceneSettings.gridMajorColor, 
+    sceneSettings.gridColorCenterLine,
+    majorGridMaterial,
+    gridOffset
+  ]);
+
+  // Frame effect for fading grid with distance
+  useFrame(({ camera }) => {
+    if (!minorGridHelper || !majorGridHelper) return;
+
+    if (sceneSettings.gridFadeDistance > 0) {
+      // Get camera position
+      const cameraPosition = camera.position;
+      
+      // Calculate distance to grid plane (using y-position for vertically-oriented grid)
+      const distanceToGrid = Math.abs(cameraPosition.y - gridOffset);
+      
+      // Calculate opacity based on distance
+      const fadeStart = sceneSettings.gridFadeDistance * 0.6;
+      const fadeEnd = sceneSettings.gridFadeDistance;
+      
+      // Minor grid fading
+      if (minorGridMaterial) {
+        if (distanceToGrid > fadeStart) {
+          const normalizedDistance = Math.min(1, (distanceToGrid - fadeStart) / (fadeEnd - fadeStart));
+          minorGridMaterial.opacity = sceneSettings.gridEnhancedVisibility 
+            ? Math.max(0.1, 0.8 - normalizedDistance * 0.8)
+            : Math.max(0.05, 0.6 - normalizedDistance * 0.6);
+        } else {
+          minorGridMaterial.opacity = sceneSettings.gridEnhancedVisibility ? 0.8 : 0.6;
+        }
+      }
+      
+      // Major grid fading - fade more slowly to keep major lines visible longer
+      if (majorGridMaterial) {
+        if (distanceToGrid > fadeStart) {
+          const normalizedDistance = Math.min(1, (distanceToGrid - fadeStart) / (fadeEnd - fadeStart));
+          majorGridMaterial.opacity = sceneSettings.gridEnhancedVisibility
+            ? Math.max(0.2, 1.0 - normalizedDistance * 0.8)
+            : Math.max(0.1, 0.8 - normalizedDistance * 0.7);
+        } else {
+          majorGridMaterial.opacity = sceneSettings.gridEnhancedVisibility ? 1.0 : 0.8;
+        }
+      }
+    }
+  });
+
+  if (!sceneSettings.gridVisible) {
+    return null;
+  }
 
   return (
-    <group ref={gridRef} position={[0, gridOffset, 0]}>
-      {/* Main grid */}
-      <Grid
-        args={[gridSize, gridSize]}
-        cellSize={cellSize}
-        cellThickness={1.5} // Increased thickness for better visibility
-        cellColor={sceneSettings.gridColorGrid}
-        sectionSize={sectionSize}
-        sectionThickness={2} // Increased thickness for better visibility
-        sectionColor={sceneSettings.gridColorCenterLine}
-        fadeDistance={fadeDistance}
-        fadeStrength={1.5} // Increased strength for smoother fade
-        infiniteGrid
-        followCamera={false} // Don't move with camera - fixes glitching
-      />
+    <>
+      {/* Use Three.js primitive for both minor and major grids */}
+      {minorGridHelper && <primitive object={minorGridHelper} />}
+      {majorGridHelper && <primitive object={majorGridHelper} />}
       
       {/* Add coordinate axes if enabled */}
       {sceneSettings.axesVisible && (
         <>
-          {/* X-axis (red) - using correct typed array construction */}
-          <line>
-            <bufferGeometry>
-              <bufferAttribute
-                attach="attributes-position"
-                count={2}
-                array={new Float32Array([-halfGridSize, 0, 0, halfGridSize, 0, 0])}
-                itemSize={3}
-              />
-            </bufferGeometry>
-            <lineBasicMaterial color="red" linewidth={3} />
-          </line>
+          {/* X-axis (red) */}
+          <Line
+            points={[[-halfGridSize, 0, 0], [halfGridSize, 0, 0]]}
+            color="red"
+            lineWidth={3}
+          />
           
-          {/* Y-axis (green) - using correct typed array construction */}
-          <line>
-            <bufferGeometry>
-              <bufferAttribute
-                attach="attributes-position"
-                count={2}
-                array={new Float32Array([0, 0, -halfGridSize, 0, 0, halfGridSize])}
-                itemSize={3}
-              />
-            </bufferGeometry>
-            <lineBasicMaterial color="green" linewidth={3} />
-          </line>
+          {/* Y-axis (green) */}
+          <Line
+            points={[[0, 0, -halfGridSize], [0, 0, halfGridSize]]}
+            color="green"
+            lineWidth={3}
+          />
         </>
       )}
-    </group>
+    </>
   );
 };
 
-// Main scene component - Now accepts live props
+// Define the type for presets explicitly if not automatically inferred
+// This helps ensure the `preset` prop is correctly typed.
+type PresetType = "sunset" | "dawn" | "night" | "warehouse" | "forest" | "apartment" | "studio" | "city" | "park" | "lobby";
+
+// Near the top of the file, add this helper
+function arePropsEqual(prevProps: any, nextProps: any) {
+  // Deep comparison for position objects
+  const positionEqual = (prev: any, next: any) => {
+    if (!prev && !next) return true;
+    if (!prev || !next) return false;
+    return Math.abs(prev.x - next.x) < 0.001 && 
+           Math.abs(prev.y - next.y) < 0.001 && 
+           Math.abs(prev.z - next.z) < 0.001;
+  };
+
+  // Deep comparison for rotation objects
+  const rotationEqual = (prev: any, next: any) => {
+    if (!prev && !next) return true;
+    if (!prev || !next) return false;
+    return Math.abs(prev.heading - next.heading) < 0.001 && 
+           Math.abs(prev.pitch - next.pitch) < 0.001 && 
+           Math.abs(prev.roll - next.roll) < 0.001;
+  };
+
+  return positionEqual(prevProps.position, nextProps.position) &&
+         rotationEqual(prevProps.rotation, nextProps.rotation) &&
+         prevProps.isSelected === nextProps.isSelected;
+}
+
+// Define the props interface for the SceneObjectRenderer
+interface SceneObjectRendererProps {
+  sceneObject: any; // Replace with your actual SceneObject type
+  isSelected: boolean;
+  selectedFaceIndex?: number;
+  onInteraction: (objectId: string, action: string, data?: any) => void;
+  onPointerOver?: (objectId: string) => void;
+  onPointerOut?: (objectId: string) => void;
+}
+
+// Create memoized version of scene object renderer with proper types
+const MemoizedSceneObjectRenderer = React.memo((props: SceneObjectRendererProps) => {
+  return (
+    <SceneObjectRenderer
+      sceneObject={props.sceneObject}
+      isSelected={props.isSelected}
+      selectedFaceIndex={props.selectedFaceIndex}
+      onInteraction={props.onInteraction}
+      onPointerOver={props.onPointerOver}
+      onPointerOut={props.onPointerOut}
+    />
+  );
+}, arePropsEqual);
+
+// Main scene component - Now accepts live props and gimbalPitch
 const MissionScene: React.FC<MissionSceneProps> = ({
   liveDronePosition,
   liveDroneRotation,
   manualDronePosition,
   onDroneDoubleClick,
   cameraFollowsDrone,
-  visualizationSettings
+  visualizationSettings,
+  gimbalPitch, // Receive gimbalPitch prop
+  droneRotation // Receive actual drone rotation
 }) => {
   const { state, dispatch } = useMission();
   const threeState = useThree(); // Access camera, mouse, etc.
@@ -331,7 +723,9 @@ const MissionScene: React.FC<MissionSceneProps> = ({
     sceneObjects,
     isFaceSelectionModeActive,
     transformObjectId,
-    sceneSettings
+    sceneSettings,
+    hardware,
+    isCameraFrustumVisible
   } = state;
 
   // State for drone simulation (only used when isSimulating is true)
@@ -484,14 +878,23 @@ const MissionScene: React.FC<MissionSceneProps> = ({
         activeDronePosition.z, 
         -activeDronePosition.y
       );
-      const desiredCameraPos = new THREE.Vector3().addVectors(targetPos, cameraOffset);
       
-      // Update camera position
-      threeState.camera.position.copy(desiredCameraPos);
+      // Dispatch an event for CADControls to handle rather than directly manipulating the camera
+      // This allows our CADControls component to coordinate the movement
+      const followEvent = new CustomEvent('drone-camera-follow', {
+        detail: {
+          targetPosition: targetPos,
+          offset: cameraOffset
+        }
+      });
+      window.dispatchEvent(followEvent);
       
-      // Update controls target
-      controlsRef.current.target.copy(targetPos);
-      controlsRef.current.update();
+      // Only update the controls target, not the camera position directly
+      // This helps prevent the camera from rotating when zooming
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(targetPos);
+        controlsRef.current.update();
+      }
     }
   });
 
@@ -517,20 +920,21 @@ const MissionScene: React.FC<MissionSceneProps> = ({
     dispatch({ type: 'SELECT_PATH_SEGMENT', payload: segment });
   };
 
-  // Determine the currently displayed drone position
+  // Determine the drone's current position and rotation for rendering
   const activeDronePosition = useMemo(() => {
+    if (isSimulating) return simDronePosition;
     if (manualDronePosition) return manualDronePosition;
-    if (state.isLive && liveDronePosition) return liveDronePosition;
-    if (state.isSimulating) return simDronePosition;
+    if (liveDronePosition) return liveDronePosition;
     if (currentMission?.takeoffPoint) return currentMission.takeoffPoint;
-    return { x: 0, y: 0, z: 0 };
-  }, [manualDronePosition, state.isLive, liveDronePosition, state.isSimulating, simDronePosition, currentMission?.takeoffPoint]);
+    return { x: 0, y: 0, z: 10 }; // Default position
+  }, [isSimulating, simDronePosition, manualDronePosition, liveDronePosition, currentMission?.takeoffPoint]);
 
   const activeDroneRotation = useMemo(() => {
-    if (state.isLive && liveDroneRotation) return liveDroneRotation;
-    if (state.isSimulating) return simDroneRotation;
-    return { heading: 0, pitch: 0, roll: 0 }; 
-  }, [state.isLive, liveDroneRotation, state.isSimulating, simDroneRotation]);
+    if (isSimulating) return simDroneRotation;
+    if (liveDroneRotation) return liveDroneRotation;
+    // Add default or other rotation sources if needed
+    return { heading: 0, pitch: 0, roll: 0 }; // Default rotation
+  }, [isSimulating, simDroneRotation, liveDroneRotation]);
 
   // Effect to calculate/clear offset and reset target when follow state changes
   useEffect(() => {
@@ -575,6 +979,35 @@ const MissionScene: React.FC<MissionSceneProps> = ({
       console.log("GCP clicked:", objectId);
     }
   };
+
+  // Add an effect to listen for object selection events from CADControls
+  useEffect(() => {
+    const handleSelectSceneObject = (event: CustomEvent) => {
+      const { object, point } = event.detail;
+      
+      // Only process objects with valid userData
+      if (object && object.userData && object.userData.sceneObjectId) {
+        console.log("Scene object selected via double-click:", object.userData.sceneObjectId);
+        console.log("Selection point:", point);
+        
+        // Ensure the point is above ground plane (y > 0)
+        if (point.y > 0) {
+          // Set the object for editing
+          dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: object.userData.sceneObjectId });
+        } else {
+          console.log("Ignoring selection below ground plane");
+        }
+      }
+    };
+    
+    // Add event listener
+    window.addEventListener('select-scene-object', handleSelectSceneObject as EventListener);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('select-scene-object', handleSelectSceneObject as EventListener);
+    };
+  }, [dispatch]);
 
   // Effect to listen for Escape key to cancel dragging/transforming
   useEffect(() => {
@@ -648,7 +1081,7 @@ const MissionScene: React.FC<MissionSceneProps> = ({
     
     // Initialize with takeoff point
     const waypoints: { coord: LocalCoord; segmentId: string | null }[] = [
-        { coord: currentMission.takeoffPoint, segmentId: null } // Start at takeoff point (null segmentId)
+      { coord: currentMission.takeoffPoint, segmentId: null } // Start at takeoff point (null segmentId)
     ];
 
     // If there are no visible segments but we have segments in the mission, automatically select the first one
@@ -669,6 +1102,18 @@ const MissionScene: React.FC<MissionSceneProps> = ({
         });
       }
     });
+    
+    // If we have only the takeoff point, add a default second point to ensure paths can be created
+    if (waypoints.length === 1 && currentMission.takeoffPoint) {
+      // Add a point 10 meters in front of takeoff
+      const defaultPoint: LocalCoord = {
+        x: currentMission.takeoffPoint.x,
+        y: currentMission.takeoffPoint.y + 10, // 10 meters forward
+        z: currentMission.takeoffPoint.z
+      };
+      waypoints.push({ coord: defaultPoint, segmentId: null });
+      console.log("[MissionScene] Added default waypoint to ensure valid simulation path");
+    }
     
     console.log(`Combined simulation path has ${waypoints.length} points (including takeoff)`);
     return waypoints;
@@ -893,17 +1338,19 @@ const MissionScene: React.FC<MissionSceneProps> = ({
         });
         
         // Check if the waypoint has a hold time
-        if (targetWaypoint?.holdTime && targetWaypoint.holdTime > 0) {
-          console.log(`Pausing at waypoint for ${targetWaypoint.holdTime} seconds`);
+        const holdDuration = targetWaypoint?.holdTime ?? 0; // Default to 0 if undefined
+        
+        if (holdDuration > 0 && !isHoldingAtWaypoint) {
+          console.log(`Pausing at waypoint for ${holdDuration} seconds`);
           
           // Enter hold state
           setIsHoldingAtWaypoint(true);
-          setHoldTimeRemaining(targetWaypoint.holdTime);
+          setHoldTimeRemaining(holdDuration);
           setWaypointHoldStartTime(state.clock.elapsedTime);
           
           // Initialize camera transition if the waypoint has camera orientation
-          if (targetWaypoint.camera) {
-            const { pitch, roll } = targetWaypoint.camera;
+          if (targetWaypoint?.camera) {
+            const { pitch = 0, roll = 0 } = targetWaypoint.camera;
             const currentRotation = simDroneRotation || { heading: 0, pitch: 0, roll: 0 };
             
             setCameraTransition({
@@ -945,29 +1392,93 @@ const MissionScene: React.FC<MissionSceneProps> = ({
     dispatch({ type: 'SET_TRANSFORM_OBJECT_ID', payload: null });
   };
 
+  // Turn on water for certain environments to showcase reflections
+  useEffect(() => {
+    // If certain environment presets that look good with water, enable it
+    if (sceneSettings.environmentMap &&
+        ['warehouse', 'sunset', 'dawn', 'forest'].includes(sceneSettings.environmentMap) &&
+        !sceneSettings.waterEnabled) {
+      // Check if we should recommend enabling water for better visuals
+      console.log(`[MissionScene] Environment '${sceneSettings.environmentMap}' would look better with water reflections`);
+    }
+  }, [sceneSettings.environmentMap, sceneSettings.waterEnabled]);
+
+  // Get access to the native three.js scene
+  const { scene } = useThree();
+  
+  // --- Add console log for debugging --- 
+  console.log("[MissionScene Render] Settings Check:", {
+    skyEnabled: sceneSettings.skyEnabled,
+    environmentMap: sceneSettings.environmentMap
+  });
+  // --- End console log ---
+  
   // Water effect with proper nullish coalescing operators
   return (
     <>
       <SceneSetup />
 
-      {/* Sky and lighting - controlled by settings */}
-      {sceneSettings.skyEnabled && <Sky sunPosition={new THREE.Vector3(...sceneSettings.sunPosition)} />}
-      <ambientLight intensity={sceneSettings.ambientLightIntensity} />
+      {/* --- Lighting & Environment --- */}
+      {/* Render Environment if a preset is selected */}
+      {sceneSettings.environmentMap && (
+        <Suspense fallback={null}> 
+          <Environment
+            preset={sceneSettings.environmentMap as PresetType}
+            background={false} // HDRI doesn't draw background
+          />
+        </Suspense>
+      )}
+
+      {/* Render Sky/Background Color */}
+      {sceneSettings.skyEnabled ? (
+        // If Sky is enabled, render it
+        <Sky
+          distance={450000}
+          sunPosition={sceneSettings.sunPosition || [100, 10, 100]}
+          // Add other Sky props back
+          rayleigh={0.5}
+          turbidity={10}
+          mieCoefficient={0.005}
+          mieDirectionalG={0.8}
+        />
+      ) : (
+        // Sky is disabled: Render solid color *only if* no HDRI is selected
+        !sceneSettings.environmentMap ? <color attach="background" args={[sceneSettings.backgroundColor]} /> : null
+      )}
+
+      {/* Directional light (always present for shadows) */}
       <directionalLight
-        position={sceneSettings.sunPosition}
-        intensity={sceneSettings.directionalLightIntensity}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={150}
+        position={[100, 100, 100]}
+        intensity={0.8}
+        castShadow={sceneSettings.shadowsEnabled}
+        shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-100}
         shadow-camera-right={100}
         shadow-camera-top={100}
         shadow-camera-bottom={-100}
+        shadow-bias={-0.001}
+      >
+        {/* Add optimization to only update shadow map when necessary */}
+        <group onUpdate={(self) => {
+          const directionalLight = self.parent as THREE.DirectionalLight;
+          if (directionalLight && directionalLight.shadow) {
+            directionalLight.shadow.autoUpdate = false;
+            directionalLight.shadow.needsUpdate = true;
+          }
+        }} />
+      </directionalLight>
+      
+      {/* Ambient light with slightly higher intensity */}
+      <ambientLight intensity={0.5} /> {/* Reduced from 0.8 or whatever the previous value was */}
+      
+      {/* Add hemisphere light for better sky/ground color interaction */}
+      <hemisphereLight 
+        args={['#94c5ff', '#805a38', 0.6]} 
+        position={[0, 50, 0]} 
       />
 
       {/* Ground plane and grid */}
-      <EnhancedGrid sceneSettings={sceneSettings} />
+      <HierarchicalGrid sceneSettings={sceneSettings} />
 
       {/* Enhanced ground plane with visibility toggle */}
       <GroundPlane
@@ -982,7 +1493,7 @@ const MissionScene: React.FC<MissionSceneProps> = ({
 
       {/* Render Scene Objects */}
       {sceneObjects.map(obj => (
-        <SceneObjectRenderer
+        <MemoizedSceneObjectRenderer
           key={obj.id}
           sceneObject={obj}
           isSelected={obj.id === selectedFace?.objectId}
@@ -1046,25 +1557,40 @@ const MissionScene: React.FC<MissionSceneProps> = ({
         <MissionAreaIndicator key={area.id} missionArea={area} />
       ))}
 
-      {/* Render Drone */}
+      {/* Conditionally render Drone Model */}
       {isDroneVisible && (
-        <DroneModel
-          position={activeDronePosition}
+        <DroneModel 
+          position={activeDronePosition} 
+          // Pass individual rotation components
           heading={activeDroneRotation.heading}
-          pitch={activeDroneRotation.pitch}
-          roll={activeDroneRotation.roll}
+          pitch={activeDroneRotation.pitch} 
+          roll={activeDroneRotation.roll} 
           onDoubleClick={onDroneDoubleClick}
-          visualizationSettings={visualizationSettings}
+          // Pass hardware details individually - ensure 'hardware' is not passed
+          cameraDetails={hardware?.cameraDetails ?? null}
+          lensDetails={hardware?.lensDetails ?? null}
+          aperture={hardware?.fStop ?? null} 
+          visualizationSettings={visualizationSettings} // Pass visualization settings
+          gimbalPitch={gimbalPitch} // Pass gimbal pitch
+          isCameraFrustumVisible={isCameraFrustumVisible} // Pass frustum visibility
         />
       )}
 
-      {/* Camera controls */}
+      {/* Orbit Controls */}
       <OrbitControls
         ref={controlsRef}
-        enableDamping={sceneSettings.cameraDamping ?? false}
-        dampingFactor={0.1}
-        makeDefault
-        reverseOrbit={sceneSettings.cameraInvertY ?? false}
+        enabled={!interactingObjectInfo} 
+        target={
+          cameraFollowsDrone 
+          ? localCoordToThree(activeDronePosition) as THREE.Vector3 
+          : controlsRef.current?.target || new THREE.Vector3(0, 0, 0)
+        }
+        maxPolarAngle={Math.PI / 2 - 0.01} 
+        minDistance={1}
+        maxDistance={8000} 
+        enablePan={true}
+        enableZoom={true}
+        enableRotate={true}
       />
 
       {/* --- Render Selected Face Visualization --- */}
@@ -1072,10 +1598,21 @@ const MissionScene: React.FC<MissionSceneProps> = ({
       {/* --- End Selected Face Visualization --- */}
 
       {/* Add ObjectTransformControls */}
-      {transformObjectId && (
+      {interactingObjectInfo?.mode === 'transform' && interactingObjectInfo.id && (
         <ObjectTransformControls 
-          objectId={transformObjectId}
-          onComplete={handleExitTransformMode}
+            objectId={interactingObjectInfo.id}
+            onComplete={handleExitTransformMode}
+        />
+      )}
+
+      {/* Reduce the number of point lights - keep only essential ones */}
+      {isDroneVisible && (
+        <pointLight
+          position={[activeDronePosition.x, activeDronePosition.z, -activeDronePosition.y]}
+          intensity={0.6}
+          distance={50}
+          decay={2}
+          castShadow={false} // Disable shadows on point lights for performance
         />
       )}
     </>

@@ -18,6 +18,7 @@ interface RasterPatternParams {
     snake: boolean; // Zigzag pattern?
     defaultCamera: CameraParams; // Default camera parameters for waypoints
     altReference?: AltitudeReference; // Optional altitude reference (defaults to RELATIVE)
+    cameraYawOffset?: number; // Optional camera yaw offset relative to path direction
 }
 
 /**
@@ -40,14 +41,22 @@ export const generateRasterPattern = (params: RasterPatternParams): Waypoint[] =
         orientation, 
         snake, 
         defaultCamera,
-        altReference = AltitudeReference.RELATIVE // Default to RELATIVE if not provided
+        altReference = AltitudeReference.RELATIVE, // Default to RELATIVE if not provided
+        cameraYawOffset = 0 // Default to 0 if not provided
     } = params;
 
     const waypoints: Waypoint[] = [];
+    
+    // Extract camera pitch from default camera params
+    const cameraPitch = defaultCamera.pitch ?? -90; // Default to -90 (nadir) if not specified
 
-    // Helper to create a full Waypoint object
-    const createWaypoint = (local: LocalCoord): Waypoint => {
+    // Helper to create a full Waypoint object with camera orientation
+    const createWaypoint = (local: LocalCoord, pathHeading: number): Waypoint => {
         const { latitude, longitude } = localToLatLng(local, localOrigin);
+        
+        // Apply camera yaw offset to path heading to get final camera heading
+        const cameraHeading = (pathHeading + cameraYawOffset + 360) % 360;
+        
         return {
             id: uuidv4(),
             lat: latitude,
@@ -55,7 +64,11 @@ export const generateRasterPattern = (params: RasterPatternParams): Waypoint[] =
             altitude: local.z, // Use the Z from LocalCoord as the primary altitude
             altReference: altReference,
             local: { ...local }, // Store the local coords too
-            camera: { ...defaultCamera }, // Use default camera params
+            camera: { 
+                ...defaultCamera,
+                heading: cameraHeading, // Apply the calculated heading with yaw offset
+                pitch: cameraPitch // Use the camera pitch from defaultCamera or default
+            },
             actions: [] // Placeholder for future actions
         };
     };
@@ -65,56 +78,78 @@ export const generateRasterPattern = (params: RasterPatternParams): Waypoint[] =
     let currentY = startCoord.y;
     let currentZ = startCoord.z + altitude; // Absolute Z altitude for the first point
 
-    // Add the very first point of the pattern
-    waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+    // Set initial path heading based on orientation
+    let pathHeading = orientation === 'horizontal' ? 90 : 0; // 90 = East, 0 = North
+    
+    // Add the very first point of the pattern with correct camera orientation
+    waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
 
-    let directionMultiplier = 1; // 1 for positive direction, -1 for negative
+    let directionMultiplier = 1;
 
     for (let i = 0; i < passes; i++) {
         if (orientation === 'horizontal') {
             // Horizontal Pass (along X), Step Altitude (Z)
+            
+            // Determine path heading based on direction
+            pathHeading = directionMultiplier > 0 ? 90 : 270; // 90 = East, 270 = West
+            
             // 1. Move along X
             currentX += length * directionMultiplier;
-            waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+            waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
 
             // Check if it's the last pass
             if (i < passes - 1) {
                 // 2. Step Altitude (Z)
                 currentZ += spacing;
-                waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+                // For transition points, maintain the same heading
+                waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
 
                 // 3. Handle snake pattern or return
                 if (snake) {
                     directionMultiplier *= -1; // Reverse direction for next pass
+                    // Update path heading for the next pass
+                    pathHeading = directionMultiplier > 0 ? 90 : 270;
                 } else {
                     // Return to start X for this altitude level
+                    // Need to update heading for the return movement
+                    pathHeading = directionMultiplier > 0 ? 270 : 90;
                     currentX -= length * directionMultiplier;
-                    waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+                    waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
+                    // Reset heading for the next pass
+                    pathHeading = directionMultiplier > 0 ? 90 : 270;
                 }
             }
-        } else { // orientation === 'vertical'
-            // Vertical Pass (along Z - Altitude), Step Horizontally (X - East)
-            // 1. Move along Z (Altitude)
-            currentZ += length * directionMultiplier; // 'length' is vertical distance here
-            waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+        } else { // vertical orientation
+            // Vertical Pass (along Y), Step Horizontally (X)
+            
+            // Determine path heading based on direction
+            pathHeading = directionMultiplier > 0 ? 0 : 180; // 0 = North, 180 = South
+            
+            // 1. Move along Y
+            currentY += length * directionMultiplier;
+            waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
 
             // Check if it's the last pass
             if (i < passes - 1) {
                 // 2. Step Horizontally (X)
                 currentX += spacing;
-                waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+                // For transition points, maintain the same heading
+                waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
 
                 // 3. Handle snake pattern (required for vertical example)
-                // Always snake for this vertical pattern based on example
-                directionMultiplier *= -1; // Reverse direction for next pass
-                // Descend/Ascend back to the starting Z altitude for this X position
-                // Note: The original 'starting altitude' might vary if the base terrain changes.
-                // For simplicity, we return to the Z height of the *previous* horizontal step.
-                // Find the Z coord of the point before the horizontal step
-                const previousZ = waypoints[waypoints.length - 2]?.local?.z ?? currentZ; 
-                // Go back down/up by the pattern length relative to the *new* X
-                currentZ = previousZ + (length * directionMultiplier); 
-                waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }));
+                if (snake) {
+                    directionMultiplier *= -1; // Reverse direction for next pass
+                    // Update path heading for the next pass
+                    pathHeading = directionMultiplier > 0 ? 0 : 180;
+                } else {
+                    // Return to start Y for this X position
+                    // Need to update heading for the return movement
+                    pathHeading = directionMultiplier > 0 ? 180 : 0;
+                    currentY -= length * directionMultiplier;
+                    waypoints.push(createWaypoint({ x: currentX, y: currentY, z: currentZ }, pathHeading));
+                    // Reset heading for the next pass
+                    pathHeading = directionMultiplier > 0 ? 0 : 180;
+                }
             }
         }
     }

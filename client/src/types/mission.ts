@@ -115,6 +115,17 @@ export interface PathSegment {
     flightLineOrientation?: 'long_axis' | 'short_axis' | 'custom'; // Hint for renderer
     [key: string]: any;             // Allow additional custom properties
   };
+  // Optional metadata for additional segment properties and customization
+  metadata?: {
+    isPhotogrammetry?: boolean;  // Indicates if this is a photogrammetry path
+    isLidarMission?: boolean;    // Indicates if this is a LiDAR-only mission (corners only, no photo waypoints)
+    originalSegmentId?: string;  // Used for path chunking
+    chunkIndex?: number;         // Used for path chunking
+    totalChunks?: number;        // Used for path chunking
+    isPreview?: boolean;         // Indicates if this is a preview/simplified version
+    originalLength?: number;     // Original waypoint count for previews
+    [key: string]: any;          // Allow any additional metadata properties
+  };
 }
 
 // GCP (Ground Control Point)

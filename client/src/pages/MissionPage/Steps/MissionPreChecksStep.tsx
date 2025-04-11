@@ -12,7 +12,7 @@ import {
     MenuItem, 
     FormControl, 
     InputLabel,
-    Grid, // For layout
+    Grid,
     Slider // Import Slider
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
@@ -281,10 +281,10 @@ const MissionPreChecksStep: React.FC = () => {
 
             {/* --- MAVLink Safety Parameters --- */}
             <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>Safety Parameters</Typography>
-             <Grid container spacing={3}>
-                 
+            
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                  {/* RTL Altitude */}
-                 <Grid size={{ xs: 12 }}> 
+                 <Box sx={{ width: '100%' }}>
                     <Typography variant="body2" gutterBottom id="rtl-altitude-slider-label">
                         Return-To-Launch Altitude (ft)
                     </Typography>
@@ -304,10 +304,10 @@ const MissionPreChecksStep: React.FC = () => {
                         </Typography>
                     </Stack>
                     <Typography variant="caption" display="block" sx={{mt:.5}}>Altitude relative to takeoff for RTL.</Typography>
-                 </Grid>
+                 </Box>
 
                  {/* --- Add Climb To Altitude Slider --- */}
-                 <Grid size={{ xs: 12 }}> 
+                 <Box sx={{ width: '100%' }}>
                     <Typography variant="body2" gutterBottom id="climb-to-altitude-slider-label">
                         Mission Start Altitude (ft AGL)
                     </Typography>
@@ -332,11 +332,11 @@ const MissionPreChecksStep: React.FC = () => {
                         </Typography>
                     </Stack>
                     <Typography variant="caption" display="block" sx={{mt:.5}}>Altitude relative to takeoff before first mission waypoint.</Typography>
-                 </Grid>
+                 </Box>
                  {/* --- End Climb To Altitude --- */}
 
                  {/* Climb Speed */}
-                 <Grid size={{ xs: 12 }}> 
+                 <Box sx={{ width: '100%' }}>
                      <Typography variant="body2" gutterBottom id="climb-speed-slider-label">
                          Default Climb Speed (m/s)
                      </Typography>
@@ -353,10 +353,10 @@ const MissionPreChecksStep: React.FC = () => {
                              {(currentMission.safetyParams?.climbSpeed ?? 2.0).toFixed(1)} m/s
                          </Typography>
                      </Stack>
-                 </Grid>
+                 </Box>
 
                  {/* Failsafe Action */}
-                 <Grid size={{ xs: 12, sm: 6 }}> 
+                 <Box sx={{ width: { xs: '100%', sm: '48%' } }}>
                     <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                          <InputLabel id="failsafe-action-label">Failsafe Action</InputLabel> {/* Added id */} 
                          <Select
@@ -370,10 +370,10 @@ const MissionPreChecksStep: React.FC = () => {
                              <MenuItem value={'HOLD'}>Hold Position (Loiter)</MenuItem>
                          </Select>
                      </FormControl>
-                 </Grid>
+                 </Box>
 
                  {/* Mission End Action */}
-                 <Grid size={{ xs: 12, sm: 6 }}> 
+                 <Box sx={{ width: { xs: '100%', sm: '48%' } }}>
                      <FormControl fullWidth size="small" sx={{ mt: 1 }}>
                          <InputLabel id="mission-end-action-label">Mission End Action</InputLabel> {/* Added id */} 
                          <Select
@@ -387,9 +387,8 @@ const MissionPreChecksStep: React.FC = () => {
                              <MenuItem value={'HOLD'}>Hold at Last Waypoint</MenuItem>
                          </Select>
                      </FormControl>
-                 </Grid>
-                 
-             </Grid>
+                 </Box>
+            </Box>
         </Box>
     );
 };

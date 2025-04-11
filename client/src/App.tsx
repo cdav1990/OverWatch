@@ -2,10 +2,11 @@ import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { ThemeProvider } from "./context/ThemeContext";
-import { MissionProvider } from './context/MissionContext';
+import { MissionProvider, useMission } from './context/MissionContext';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { ThreeJSStateProvider } from './context/ThreeJSStateContext';
 import LaunchScreen from './components/LaunchScreen/LaunchScreen';
+import { addDefaultDevSceneObjects } from './utils/sceneHelpers';
 import './App.css';
 
 // Lazy-loaded components
@@ -60,6 +61,22 @@ const TitleUpdater = () => {
   return null; // This component doesn't render anything
 };
 
+// Dev mode initializer component
+const DevModeInitializer = () => {
+  const { state, dispatch } = useMission();
+  
+  useEffect(() => {
+    // Only initialize scene objects if none exist yet
+    if (state.sceneObjects.length === 0) {
+      console.log("Initializing development scene with default objects");
+      // Add default dock and ship objects for development
+      addDefaultDevSceneObjects(dispatch);
+    }
+  }, [dispatch, state.sceneObjects.length]);
+  
+  return null; // This component doesn't render anything
+};
+
 // Main application content component
 const MainApp: React.FC = () => {
   const { appMode } = useAppContext();
@@ -72,6 +89,7 @@ const MainApp: React.FC = () => {
     <Suspense fallback={<LoadingFallback />}>
       <AppLayout>
         <TitleUpdater />
+        <DevModeInitializer />
         <Box component="main" sx={{ flexGrow: 1, width: '100%', height: 'calc(100vh - 64px)', overflow: 'auto' }}>
           <Routes>
             <Route path="/" element={

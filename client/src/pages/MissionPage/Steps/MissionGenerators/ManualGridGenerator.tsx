@@ -8,8 +8,26 @@ import {
     Switch, 
     FormControlLabel,
     Box,
-    Typography
+    Typography,
+    Slider,
+    Grid,
+    Divider,
+    Paper,
+    Tooltip,
+    InputAdornment
 } from '@mui/material';
+import { 
+    Straighten as StraightenIcon,
+    GridOn as GridOnIcon, 
+    Layers as LayersIcon,
+    Terrain as TerrainIcon,
+    CameraAlt as CameraAltIcon,
+    SettingsEthernet as SettingsEthernetIcon,
+    LensBlur as LensBlurIcon,
+    ZoomOutMap as ZoomOutMapIcon,
+    SwapHoriz as SwapHorizIcon,
+    ArrowRightAlt as ArrowRightAltIcon
+} from '@mui/icons-material';
 import { useMission } from '../../../../context/MissionContext';
 import { AltitudeReference, LocalCoord, CameraParams, PathSegment, PathType, Waypoint, LatLng } from '../../../../types/mission';
 import { generateRasterPattern } from '../../../../utils/pathGeneration';
@@ -23,7 +41,7 @@ const defaultCameraParams: CameraParams = {
     near: 0.1,
     far: 1000,
     heading: 0,
-    pitch: 0,
+    pitch: -90, // Default to looking straight down
 };
 
 interface ManualGridGeneratorProps {
@@ -42,6 +60,13 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
     const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
     const [snakePattern, setSnakePattern] = useState<boolean>(true);
     const [rasterStartOffset, setRasterStartOffset] = useState<LocalCoord>({ x: 0, y: 0, z: 0 });
+    
+    // Camera orientation state
+    const [cameraPitch, setCameraPitch] = useState<number>(-90); // -90 is straight down (nadir)
+    const [cameraYawOffset, setCameraYawOffset] = useState<number>(0); // 0 is along path direction
+    const [cameraPitchType, setCameraPitchType] = useState<'nadir' | 'custom'>('nadir');
+    // Add state for mission type toggle
+    const [missionType, setMissionType] = useState<'photogrammetry' | 'lidar'>('photogrammetry');
 
     // Helper to create a full Waypoint object from LocalCoord
     const createWaypointFromLocal = (local: LocalCoord, origin: LatLng, altRef: AltitudeReference, camera: CameraParams): Waypoint => {
@@ -80,11 +105,11 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
         const passesNum = parseInt(numPasses, 10);
         const altitudeNum = parseFloat(startAltitudeAGL);
 
-        if (isNaN(lengthNum) || lengthNum <= 0 ||
-            isNaN(spacingNum) || spacingNum <= 0 ||
+        if (isNaN(lengthNum) || 
+            isNaN(spacingNum) || 
             isNaN(passesNum) || passesNum <= 0 ||
-            isNaN(altitudeNum) || altitudeNum < 0) {
-            console.error("Invalid raster parameters. Please enter valid numbers (Length/Spacing/Passes > 0, Altitude >= 0).");
+            isNaN(altitudeNum)) {
+            console.error("Invalid raster parameters. Please enter valid numbers. Number of passes must be positive.");
             return;
         }
 
@@ -95,6 +120,13 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
         };
         
         const altRef = AltitudeReference.RELATIVE;
+        
+        // Create camera parameters with orientation settings
+        const cameraParamsWithOrientation: CameraParams = {
+            ...defaultCameraParams,
+            pitch: cameraPitch,
+        };
+        
         const params = {
             startCoord: absoluteStartCoord, 
             localOrigin: localOrigin, 
@@ -104,8 +136,9 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
             altitude: altitudeNum,
             orientation: orientation, 
             snake: snakePattern, 
-            defaultCamera: defaultCameraParams,
+            defaultCamera: cameraParamsWithOrientation,
             altReference: altRef,
+            cameraYawOffset: cameraYawOffset, // Add yaw offset to params
         };
 
         try {
@@ -145,7 +178,11 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
                 id: uuidv4(),
                 type: PathType.GRID,
                 waypoints: fullPathWaypoints,
-                speed: defaultSpeed ?? 5
+                speed: defaultSpeed ?? 5,
+                metadata: {
+                    isLidarMission: missionType === 'lidar',
+                    isPhotogrammetry: missionType === 'photogrammetry'
+                }
             };
     
             console.log(`Dispatching ADD_PATH_SEGMENT with ${fullPathWaypoints.length} waypoints:`, newPathSegment);
@@ -164,85 +201,131 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
             setOrientation(newOrientation);
         }
     };
+    
+    const handleCameraPitchTypeChange = (
+        _event: React.MouseEvent<HTMLElement>,
+        newType: 'nadir' | 'custom' | null,
+    ) => {
+        if (newType !== null) {
+            setCameraPitchType(newType);
+            // If nadir is selected, set pitch to -90 degrees
+            if (newType === 'nadir') {
+                setCameraPitch(-90);
+            }
+        }
+    };
 
     return (
-        <Stack spacing={2}>
+        <Paper 
+            elevation={0} 
+            sx={{ 
+                p: 2, 
+                borderRadius: 2, 
+                backgroundColor: 'rgba(32, 41, 56, 0.05)'
+            }}
+        >
+            <Stack spacing={2.5}>
+                <Box>
+                    <Typography variant="h6" gutterBottom sx={{ fontSize: '1rem', color: '#0B5394', display: 'flex', alignItems: 'center' }}>
+                        <GridOnIcon sx={{ mr: 1 }} /> Grid Pattern Configuration
+                    </Typography>
+                </Box>
+                
+                {/* Pattern Dimensions Group */}
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        <StraightenIcon fontSize="small" sx={{ mr: 1 }} /> Pattern Dimensions
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                        <Grid xs={6}>
+                            <Tooltip title="Length of each pass in the pattern (can be negative)" arrow>
             <TextField 
-                label="Pattern Length (m)" 
+                                    label="Pattern Length" 
                 variant="outlined" 
                 size="small" 
                 fullWidth
                 type="number"
                 value={patternLength}
                 onChange={(e) => setPatternLength(e.target.value)}
-                helperText={orientation === 'horizontal' ? "Length of each East/West row" : "Length of each North/South column"}
-                InputProps={{ inputProps: { min: 1, step: 1 } }}
-            />
+                                    InputProps={{
+                                        endAdornment: <InputAdornment position="end">m</InputAdornment>,
+                                        inputProps: { step: 5 }
+                                    }}
+                                />
+                            </Tooltip>
+                        </Grid>
+                        <Grid xs={6}>
+                            <Tooltip title="Distance between parallel passes (can be negative)" arrow>
             <TextField 
-                label="Pattern Spacing (m)" 
+                                    label="Spacing" 
                 variant="outlined" 
                 size="small" 
                 fullWidth
                 type="number"
                 value={patternSpacing}
                 onChange={(e) => setPatternSpacing(e.target.value)}
-                helperText={orientation === 'horizontal' ? "Distance between North/South rows" : "Distance between East/West columns"}
-                InputProps={{ inputProps: { min: 1, step: 1 } }}
-            />
+                                    InputProps={{
+                                        endAdornment: <InputAdornment position="end">m</InputAdornment>,
+                                        inputProps: { step: 1 }
+                                    }}
+                                />
+                            </Tooltip>
+                        </Grid>
+                    </Grid>
+                </Box>
+                
+                {/* Pattern Details Group */}
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        <LayersIcon fontSize="small" sx={{ mr: 1 }} /> Pattern Details
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                        <Grid xs={6}>
+                            <Tooltip title="Number of parallel passes to make" arrow>
             <TextField 
-                label="Number of Passes" 
+                                    label="Passes" 
                 variant="outlined" 
                 size="small" 
                 fullWidth
                 type="number"
                 value={numPasses}
                 onChange={(e) => setNumPasses(e.target.value)}
-                helperText={orientation === 'horizontal' ? "Number of rows" : "Number of columns"}
-                InputProps={{ inputProps: { min: 1, step: 1 } }}
+                                    InputProps={{
+                                        inputProps: { min: 1, step: 1 }
+                                    }}
             />
+                            </Tooltip>
+                        </Grid>
+                        <Grid xs={6}>
+                            <Tooltip title="Flight altitude above ground level (can be negative)" arrow>
             <TextField 
-                label="Flight Altitude (AGL, m)" 
+                                    label="Altitude (AGL)" 
                 variant="outlined" 
                 size="small" 
+                                    fullWidth
                 type="number"
-                fullWidth
                 value={startAltitudeAGL}
                 onChange={(e) => setStartAltitudeAGL(e.target.value)}
-                InputProps={{ inputProps: { min: 0, step: 1 } }}
-            />
-            {/* Placeholder for selecting start position */}
-            <TextField 
-                label="Start Offset (from Takeoff) X (m)" 
-                variant="outlined" 
-                size="small" 
-                type="number"
-                fullWidth
-                value={rasterStartOffset.x}
-                onChange={(e) => setRasterStartOffset(p => ({ ...p, x: parseFloat(e.target.value) || 0 }))}
-            />
-            <TextField 
-                label="Start Offset (from Takeoff) Y (m)" 
-                variant="outlined" 
-                size="small" 
-                type="number"
-                fullWidth
-                value={rasterStartOffset.y}
-                onChange={(e) => setRasterStartOffset(p => ({ ...p, y: parseFloat(e.target.value) || 0 }))}
-            />
-            <TextField 
-                label="Start Offset (from Takeoff) Z (m)" 
-                variant="outlined" 
-                size="small" 
-                type="number"
-                fullWidth
-                value={rasterStartOffset.z}
-                onChange={(e) => setRasterStartOffset(p => ({ ...p, z: parseFloat(e.target.value) || 0 }))}
-                helperText="Vertical offset from takeoff point for pattern start."
-            />
-            
-            {/* Orientation Toggle */}
-            <Box>
-                <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>Pattern Orientation</Typography>
+                                    InputProps={{
+                                        endAdornment: <InputAdornment position="end">m</InputAdornment>,
+                                        inputProps: { step: 5 }
+                                    }}
+                                />
+                            </Tooltip>
+                        </Grid>
+                    </Grid>
+                </Box>
+                
+                {/* Flight Pattern Orientation */}
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        <SettingsEthernetIcon fontSize="small" sx={{ mr: 1 }} /> Pattern Orientation
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                        <Grid xs={12}>
                 <ToggleButtonGroup
                     value={orientation}
                     exclusive
@@ -252,37 +335,327 @@ const ManualGridGenerator: React.FC<ManualGridGeneratorProps> = ({ isEmbedded = 
                     fullWidth
                 >
                     <ToggleButton value="horizontal" aria-label="horizontal pattern">
-                    Horizontal (E/W)
+                                    <ArrowRightAltIcon sx={{ mr: 1 }} /> Horizontal (E/W)
                     </ToggleButton>
                     <ToggleButton value="vertical" aria-label="vertical pattern">
-                    Vertical (N/S)
+                                    <ArrowRightAltIcon sx={{ mr: 1, transform: 'rotate(90deg)' }} /> Vertical (N/S)
                     </ToggleButton>
                 </ToggleButtonGroup>
-            </Box>
-
-            {/* Snake Pattern Toggle */}
+                        </Grid>
+                        <Grid xs={12}>
             <FormControlLabel
                 control={
                     <Switch
                         checked={snakePattern}
                         onChange={(e) => setSnakePattern(e.target.checked)}
                         name="snakePattern"
-                        size="small"
-                    />
-                }
-                label="Snake Pattern (Zigzag)"
-                labelPlacement="start"
-                sx={{ justifyContent: 'space-between', ml: 0, mr: 0.5 }}
-            />
-            
+                                        color="primary"
+                                    />
+                                }
+                                label={
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                        <SwapHorizIcon fontSize="small" sx={{ mr: 0.5 }} />
+                                        <Typography variant="body2">Snake Pattern (Zigzag)</Typography>
+                                    </Box>
+                                }
+                                labelPlacement="end"
+                                sx={{ m: 0 }}
+                            />
+                        </Grid>
+                    </Grid>
+                </Box>
+                
+                {/* Mission Type Selection */}
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        <CameraAltIcon fontSize="small" sx={{ mr: 1 }} /> Mission Type
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                        <Grid xs={12}>
+                            <ToggleButtonGroup
+                                value={missionType}
+                                exclusive
+                                onChange={(e, newType) => {
+                                    if (newType !== null) {
+                                        setMissionType(newType);
+                                        // When switching to LiDAR, set camera to nadir (straight down)
+                                        if (newType === 'lidar') {
+                                            setCameraPitchType('nadir');
+                                            setCameraPitch(-90);
+                                        }
+                                    }
+                                }}
+                                aria-label="mission type"
+                                size="small"
+                                fullWidth
+                            >
+                                <ToggleButton value="photogrammetry" aria-label="photogrammetry mission">
+                                    <CameraAltIcon sx={{ mr: 1 }} /> Photogrammetry (Full Path)
+                                </ToggleButton>
+                                <ToggleButton value="lidar" aria-label="lidar mission">
+                                    <TerrainIcon sx={{ mr: 1 }} /> LiDAR (Corners Only)
+                                </ToggleButton>
+                            </ToggleButtonGroup>
+                        </Grid>
+                        {missionType === 'lidar' && (
+                            <Grid xs={12}>
+                                <Box sx={{ 
+                                    p: 1, 
+                                    mt: 1, 
+                                    backgroundColor: 'rgba(22, 160, 133, 0.1)', 
+                                    borderRadius: 1,
+                                    border: '1px dashed rgba(22, 160, 133, 0.3)'
+                                }}>
+                                    <Typography variant="caption" color="secondary">
+                                        <b>LiDAR Mode:</b> Creates a simplified path with only corner waypoints. This is ideal for LiDAR missions where continuous photo capture is not needed.
+                                    </Typography>
+                                </Box>
+                            </Grid>
+                        )}
+                    </Grid>
+                </Box>
+                
+                {/* Camera Orientation Section */}
+                <Box sx={{ 
+                    mb: 2, 
+                    p: 2, 
+                    backgroundColor: 'rgba(18, 89, 146, 0.05)', 
+                    borderRadius: 1,
+                    border: '1px solid rgba(18, 89, 146, 0.1)',
+                    opacity: missionType === 'lidar' ? 0.7 : 1
+                }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', color: '#0B5394' }}>
+                        <CameraAltIcon fontSize="small" sx={{ mr: 1 }} /> Camera Orientation
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                        {/* Camera Pitch Type */}
+                        <Grid xs={12}>
+                            <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>
+                                <LensBlurIcon fontSize="small" sx={{ mr: 0.5, fontSize: '0.9rem', verticalAlign: 'text-bottom' }} /> Viewing Angle
+                            </Typography>
+                            <ToggleButtonGroup
+                                value={cameraPitchType}
+                                exclusive
+                                onChange={handleCameraPitchTypeChange}
+                                aria-label="camera pitch type"
+                                size="small"
+                                fullWidth
+                            >
+                                <ToggleButton value="nadir" aria-label="nadir view">
+                                    Nadir (Down)
+                                </ToggleButton>
+                                <ToggleButton value="custom" aria-label="custom angle">
+                                    Custom Angle
+                                </ToggleButton>
+                            </ToggleButtonGroup>
+                        </Grid>
+                        
+                        {/* Camera Pitch Slider */}
+                        {cameraPitchType === 'custom' && (
+                            <Grid xs={12}>
+                                <Box sx={{ px: 1 }}>
+                                    <Typography variant="caption" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>Camera Pitch:</span>
+                                        <span>{cameraPitch}°</span>
+                                    </Typography>
+                                    <Slider
+                                        value={cameraPitch}
+                                        onChange={(_, value) => setCameraPitch(value as number)}
+                                        min={-90}
+                                        max={0}
+                                        step={5}
+                                        marks={[
+                                            { value: -90, label: '-90°' },
+                                            { value: -45, label: '-45°' },
+                                            { value: 0, label: '0°' }
+                                        ]}
+                                        valueLabelDisplay="auto"
+                                        color="primary"
+                                    />
+                                </Box>
+                            </Grid>
+                        )}
+                        
+                        {/* Camera Yaw Offset Slider */}
+                        <Grid xs={12}>
+                            <Box sx={{ px: 1 }}>
+                                <Typography variant="caption" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>Camera Direction:</span>
+                                    <span>{cameraYawOffset}°</span>
+                                </Typography>
+                                <Slider
+                                    value={cameraYawOffset}
+                                    onChange={(_, value) => setCameraYawOffset(value as number)}
+                                    min={-180}
+                                    max={180}
+                                    step={15}
+                                    marks={[
+                                        { value: -90, label: '-90°' },
+                                        { value: 0, label: '0°' },
+                                        { value: 90, label: '90°' }
+                                    ]}
+                                    valueLabelDisplay="auto"
+                                    color="primary"
+                                />
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                    0° faces along path, ±90° faces perpendicular to path
+                                </Typography>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                </Box>
+                
+                {/* Start Position Offset Group */}
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                        <ZoomOutMapIcon fontSize="small" sx={{ mr: 1 }} /> Start Position (Offset from Takeoff)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                        Use positive or negative values to position anywhere in the scene
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                        <Grid xs={4}>
+                            <TextField 
+                                label="X" 
+                                variant="outlined" 
+                                size="small" 
+                                fullWidth
+                                type="number"
+                                value={rasterStartOffset.x}
+                                placeholder="+/- value"
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    // Handle special case when user is typing "-" 
+                                    if (val === "-") {
+                                        setRasterStartOffset(p => ({ ...p, x: -0 }));
+                                        return;
+                                    }
+                                    const parsed = parseFloat(val);
+                                    setRasterStartOffset(p => ({ ...p, x: isNaN(parsed) ? 0 : parsed }));
+                                }}
+                                InputProps={{
+                                    endAdornment: <InputAdornment position="end">m</InputAdornment>,
+                                    inputProps: { step: 10 }
+                                }}
+                            />
+                            <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                {[-100, -50, -10, 10, 50, 100].map((val) => (
+                                    <Button 
+                                        key={`x-${val}`}
+                                        size="small" 
+                                        variant="outlined" 
+                                        sx={{ 
+                                            minWidth: '36px', 
+                                            height: '24px', 
+                                            fontSize: '0.7rem',
+                                            p: 0,
+                                            borderColor: val < 0 ? 'error.main' : 'primary.main',
+                                            color: val < 0 ? 'error.main' : 'primary.main',
+                                        }}
+                                        onClick={() => setRasterStartOffset(p => ({ ...p, x: val }))}
+                                    >
+                                        {val}
+                                    </Button>
+                                ))}
+                            </Box>
+                        </Grid>
+                        <Grid xs={4}>
+                            <TextField 
+                                label="Y" 
+                                variant="outlined" 
+                                size="small" 
+                                fullWidth
+                                type="number"
+                                value={rasterStartOffset.y}
+                                placeholder="+/- value"
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    // Handle special case when user is typing "-" 
+                                    if (val === "-") {
+                                        setRasterStartOffset(p => ({ ...p, y: -0 }));
+                                        return;
+                                    }
+                                    const parsed = parseFloat(val);
+                                    setRasterStartOffset(p => ({ ...p, y: isNaN(parsed) ? 0 : parsed }));
+                                }}
+                                InputProps={{
+                                    endAdornment: <InputAdornment position="end">m</InputAdornment>,
+                                    inputProps: { step: 10 }
+                                }}
+                            />
+                            <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                {[-100, -50, -10, 10, 50, 100].map((val) => (
+                                    <Button 
+                                        key={`y-${val}`}
+                                        size="small" 
+                                        variant="outlined" 
+                                        sx={{ 
+                                            minWidth: '36px', 
+                                            height: '24px', 
+                                            fontSize: '0.7rem',
+                                            p: 0,
+                                            borderColor: val < 0 ? 'error.main' : 'primary.main',
+                                            color: val < 0 ? 'error.main' : 'primary.main',
+                                        }}
+                                        onClick={() => setRasterStartOffset(p => ({ ...p, y: val }))}
+                                    >
+                                        {val}
+                                    </Button>
+                                ))}
+                            </Box>
+                        </Grid>
+                        <Grid xs={4}>
+                            <TextField 
+                                label="Z" 
+                                variant="outlined" 
+                                size="small" 
+                                fullWidth
+                                type="number"
+                                value={rasterStartOffset.z}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    // Handle special case when user is typing "-" 
+                                    if (val === "-") {
+                                        setRasterStartOffset(p => ({ ...p, z: -0 }));
+                                        return;
+                                    }
+                                    const parsed = parseFloat(val);
+                                    setRasterStartOffset(p => ({ ...p, z: isNaN(parsed) ? 0 : parsed }));
+                                }}
+                                InputProps={{
+                                    endAdornment: <InputAdornment position="end">m</InputAdornment>,
+                                    inputProps: { step: 10 }
+                                }}
+                            />
+                        </Grid>
+                    </Grid>
+                </Box>
+                
+                {/* Generate Button */}
             <Button 
                 variant="contained" 
                 onClick={handleGeneratePath}
                 disabled={!currentMission || !currentMission.takeoffPoint || !currentMission.localOrigin}
-            >
-                Generate & Add Path Segment
+                    color="primary"
+                    size="large"
+                    sx={{ 
+                        mt: 1,
+                        py: 1,
+                        backgroundColor: '#0B5394',
+                        fontWeight: 'bold',
+                        '&:hover': {
+                            backgroundColor: '#0a4983',
+                        }
+                    }}
+                    fullWidth
+                >
+                    Generate & Add Path
             </Button>
         </Stack>
+        </Paper>
     );
 };
 

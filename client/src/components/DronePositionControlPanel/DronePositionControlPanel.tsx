@@ -10,17 +10,21 @@ import {
     Divider
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { LocalCoord } from '../../types/mission'; // Assuming LocalCoord is used for position
 import { styled } from '@mui/material/styles';
 import { metersToFeet } from '../../utils/sensorCalculations'; // Keep only conversion needed for display
 import { useMission } from '../../context/MissionContext'; // Keep context
 
-// Props definition - updated to include camera controls
+// Props definition - updated to include camera controls and heading
 interface DronePositionControlPanelProps {
     isOpen: boolean;
     onClose: () => void;
     initialPosition: LocalCoord;
     onPositionChange: (newPosition: LocalCoord) => void;
+    initialHeading?: number; // Optional number for heading
+    onHeadingChange?: (newHeading: number) => void; // Optional callback
     initialCameraFollow: boolean;
     onCameraFollowChange: (follows: boolean) => void;
     // New camera control props
@@ -31,6 +35,9 @@ interface DronePositionControlPanelProps {
     isRecording?: boolean;
     onTriggerCamera?: () => void;
     onToggleRecording?: () => void;
+    // New viewport control props
+    isCameraViewportVisible?: boolean;
+    onToggleCameraViewport?: (visible: boolean) => void;
 }
 
 // Styled components for consistent spacing and appearance
@@ -158,7 +165,10 @@ const ActionButton = styled(Box)(({ theme }) => ({
     },
 }));
 
-const CameraModeButton = styled(Box)<{ active: boolean }>(({ theme, active }) => ({
+const CameraModeButton = styled(Box, {
+  // Prevent custom 'active' prop from reaching the DOM element
+  shouldForwardProp: (prop) => prop !== 'active',
+})<{ active: boolean }>(({ theme, active }) => ({
     backgroundColor: active ? 'rgba(79, 195, 247, 0.2)' : 'rgba(40, 40, 40, 0.9)',
     color: active ? '#4fc3f7' : 'white',
     padding: '5px 10px',
@@ -207,20 +217,33 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     isRecording = false,
     onTriggerCamera = () => {},
     onToggleRecording = () => {},
+    // Default values for new props
+    isCameraViewportVisible = false,
+    onToggleCameraViewport = () => {},
+    // Use correct props with defaults here
+    initialHeading = 0, 
+    onHeadingChange = () => {},
 }) => {
     // Keep only the state we need
     const [position, setPosition] = useState<LocalCoord>(initialPosition);
+    const [heading, setHeading] = useState<number>(initialHeading); // Initialize with prop or default
     const [cameraFollows, setCameraFollows] = useState(initialCameraFollow);
     
     // Add new state for camera controls
     const [currentGimbalPitch, setCurrentGimbalPitch] = useState<number>(gimbalPitch);
     const [currentCameraMode, setCurrentCameraMode] = useState<'photo' | 'video'>(cameraMode);
     const [currentlyRecording, setCurrentlyRecording] = useState<boolean>(isRecording);
+    // Add state for viewport toggle
+    const [cameraViewportEnabled, setCameraViewportEnabled] = useState<boolean>(isCameraViewportVisible);
 
     // Update internal state if initial props change
     useEffect(() => {
         setPosition(initialPosition);
     }, [initialPosition]);
+
+    useEffect(() => {
+        setHeading(initialHeading); // Update heading state when prop changes
+    }, [initialHeading]);
 
     useEffect(() => {
         setCameraFollows(initialCameraFollow);
@@ -238,6 +261,11 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
     useEffect(() => {
         setCurrentlyRecording(isRecording);
     }, [isRecording]);
+    
+    // Update viewport state when prop changes
+    useEffect(() => {
+        setCameraViewportEnabled(isCameraViewportVisible);
+    }, [isCameraViewportVisible]);
     
     // Add Escape key handling
     useEffect(() => {
@@ -260,6 +288,15 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
         const updatedPosition = { ...position, [axis]: newValue };
         setPosition(updatedPosition); 
         onPositionChange(updatedPosition); // Notify parent with meter values
+    };
+
+    // Handler for heading slider
+    const handleHeadingSliderChange = (_: Event, value: number | number[]) => {
+        const newHeading = (Array.isArray(value) ? value[0] : value);
+        // Ensure heading stays within 0-360 degrees
+        const normalizedHeading = (newHeading + 360) % 360;
+        setHeading(normalizedHeading); 
+        onHeadingChange?.(normalizedHeading); // Safely call optional callback
     };
 
     const handleSwitchChange = (event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
@@ -289,12 +326,18 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
         onToggleRecording();
     };
 
+    // New handler for viewport toggle
+    const handleViewportToggleChange = (event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+        setCameraViewportEnabled(checked);
+        onToggleCameraViewport(checked);
+    };
+
     if (!isOpen) {
         return null;
     }
 
     // Define reasonable min/max for sliders in METERS (adjust as needed)
-    const positionRange = { min: -100, max: 100 }; // meters
+    const positionRange = { min: -915, max: 915 }; // meters (~ +/- 3000 ft)
     const heightRange = { min: 0, max: 100 }; // meters (Z - Up)
     const pitchRange = { min: -90, max: 0 }; // degrees (looking down)
 
@@ -331,7 +374,7 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     aria-labelledby="x-position-slider"
                     min={positionRange.min}
                     max={positionRange.max}
-                    step={0.1} // Meter step
+                    step={1} // Adjust step for larger range
                     valueLabelDisplay="auto"
                 />
                 <ValueDisplay>{metersToFeet(position.x).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
@@ -345,7 +388,7 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     aria-labelledby="y-position-slider"
                     min={positionRange.min}
                     max={positionRange.max}
-                    step={0.1} // Meter step
+                    step={1} // Adjust step for larger range
                     valueLabelDisplay="auto"
                 />
                 <ValueDisplay>{metersToFeet(position.y).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
@@ -363,6 +406,21 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     valueLabelDisplay="auto"
                 />
                 <ValueDisplay>{metersToFeet(position.z).toFixed(2)}ft</ValueDisplay> {/* Display feet */}
+            </ControlRow>
+
+            {/* ADDED: Heading Control Row */}
+            <ControlRow>
+                <SliderLabel>Heading (Yaw)</SliderLabel>
+                <StyledSlider
+                    value={heading}
+                    onChange={handleHeadingSliderChange}
+                    aria-labelledby="heading-slider"
+                    min={0}
+                    max={360}
+                    step={1} // Degree step
+                    valueLabelDisplay="auto"
+                />
+                <ValueDisplay>{heading.toFixed(1)}°</ValueDisplay>
             </ControlRow>
 
             <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
@@ -421,6 +479,27 @@ const DronePositionControlPanel: React.FC<DronePositionControlPanelProps> = ({
                     </RecordButton>
                 )}
             </Box>
+
+            {/* Camera Viewport Toggle */}
+            <FormControlLabel
+                control={
+                    <StyledSwitch
+                        checked={cameraViewportEnabled}
+                        onChange={handleViewportToggleChange}
+                        name="cameraViewportToggle"
+                        size="small"
+                        icon={<VisibilityOffIcon sx={{ fontSize: '1.1rem' }} />}
+                        checkedIcon={<VisibilityIcon sx={{ fontSize: '1.1rem' }} />}
+                    />
+                }
+                label={
+                    <Typography sx={{ fontSize: '0.85rem', color: '#ddd', display: 'flex', alignItems: 'center' }}>
+                        Camera Viewport
+                    </Typography>
+                }
+                sx={{ marginLeft: 0, marginBottom: 1, justifyContent: 'space-between' }}
+                labelPlacement="start"
+            />
 
             <Divider sx={{ my: 1, borderColor: 'rgba(255, 255, 255, 0.08)' }} />
 

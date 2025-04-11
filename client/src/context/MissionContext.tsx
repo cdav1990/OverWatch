@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode, useEffect, Dispatch, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, Dispatch, useMemo, useCallback } from 'react';
 import { 
   Mission, 
   Waypoint, 
@@ -43,7 +43,7 @@ export interface HardwareState {
 // Define Scene Object Type
 export interface SceneObject {
     id: string;
-    type: 'box' | 'model' | 'area' | 'ship'; // Add 'ship' type
+    type: 'box' | 'model' | 'area' | 'ship' | 'dock'; // Add 'dock' type
     class?: 'obstacle' | 'neutral' | 'asset'; // ADDED: Object classification
     width?: number;   // Optional, might not apply to all types
     length?: number;  // Optional
@@ -51,9 +51,11 @@ export interface SceneObject {
     color?: string;   // Optional
     position: LocalCoord;
     rotation?: LocalCoord; // Optional rotation
+    scale?: { x: number; y: number; z: number }; // Scale factor for imported models
     url?: string;     // For models
     points?: LocalCoord[]; // For polygons/areas
     realWorldLength?: number; // For accurate scaling of models (in feet)
+    heightOffset?: number; // Height offset in feet (-50 to +50)
     createdAt: string;
     source: string; // Where it originated (e.g., 'build-scene-ui', 'import')
 }
@@ -212,6 +214,7 @@ type MissionAction =
   | { type: 'SET_HEAVY_OPERATION'; payload: boolean }
   | { type: 'START_HEAVY_OPERATION' }
   | { type: 'END_HEAVY_OPERATION' }
+  | { type: 'MOVE_SCENE_OBJECT'; payload: { type: string; position: LocalCoord; heightOffset?: number } }
 
 // Update the MissionState interface
 export interface MissionState {
@@ -270,6 +273,64 @@ export interface MissionState {
 }
 
 // --- >>> DEV MODE: Default Mission Data <<< ---
+const DEV_TAKEOFF_POINT: LocalCoord = { x: -287, y: 347, z: 12 }; // New point based on screenshot
+const GCP_SIDE_LENGTH_METERS = feetToMeters(20); // 20 feet in meters
+
+// Create default GCPs centered around the takeoff point
+const createDefaultDevGcps = (center: LocalCoord, sideLength: number): GCP[] => {
+    const gcps: GCP[] = [
+        // GCP-A: At the takeoff point (center)
+        {
+            id: generateUUID(),
+            name: 'GCP-A',
+            lat: 0, lng: 0, altitude: 0, 
+            local: { x: center.x, y: center.y, z: center.z }, // Positioned at takeoff height
+            color: '#ff0000', // Red for center
+            size: 1.5,
+        },
+        // GCP-B: East of GCP-A (along positive X axis relative to A)
+        {
+            id: generateUUID(),
+            name: 'GCP-B',
+            lat: 0, lng: 0, altitude: 0, 
+            local: { x: center.x + sideLength, y: center.y, z: center.z }, 
+            color: '#00ff00',
+            size: 1,
+        },
+        // GCP-C: North of GCP-A (along positive Y axis relative to A)
+        {
+            id: generateUUID(),
+            name: 'GCP-C',
+            lat: 0, lng: 0, altitude: 0, 
+            local: { x: center.x, y: center.y + sideLength, z: center.z }, 
+            color: '#00ff00',
+            size: 1,
+        },
+    ];
+    return gcps;
+};
+
+const DEFAULT_DEV_GCPS = createDefaultDevGcps(DEV_TAKEOFF_POINT, GCP_SIDE_LENGTH_METERS);
+
+// --- Re-add DEFAULT_DEV_HARDWARE ---
+const DEFAULT_DEV_HARDWARE: HardwareState = {
+    drone: 'freefly-alta-x',
+    lidar: 'ouster', // Or 'none' if applicable
+    camera: 'phase-one-ixm-100',
+    lens: 'phaseone-rsm-80mm',
+    sensorType: 'Medium Format', // Or deduced from camera
+    fStop: 5.6, // Or lowest available from lens
+    focusDistance: 30, // meters (~100 ft)
+    shutterSpeed: '1/1000', 
+    iso: 100,
+    droneDetails: null,
+    cameraDetails: null,
+    lensDetails: null,
+    availableFStops: [],
+    calculatedFov: undefined,
+};
+// --- End Re-add ---
+
 const DEFAULT_DEV_REGION: Region = {
     id: 'dev-region-01',
     name: 'Dev Test Area (SF)',
@@ -282,42 +343,15 @@ const DEFAULT_DEV_REGION: Region = {
     }
 };
 
-const DEFAULT_DEV_HARDWARE: HardwareState = {
-    drone: 'freefly-alta-x',
-    lidar: 'ouster',
-    camera: 'phase-one-ixm-100',
-    lens: 'phaseone-rsm-80mm',
-    sensorType: 'Medium Format',
-    fStop: 5.6,
-    focusDistance: 30, // meters (~100 ft)
-    shutterSpeed: '1/1000', // Default shutter
-    iso: 100,           // Default ISO
-    droneDetails: null, // Will be populated later
-    cameraDetails: null,
-    lensDetails: null,
-    availableFStops: [],
-};
-
 const DEFAULT_DEV_MISSION: Mission = {
     id: 'dev-mission-001',
     name: 'Default Dev Mission',
     region: DEFAULT_DEV_REGION,
-    pathSegments: [ 
-        // Optional: Add a simple default path segment
-        // { 
-        //     id: generateUUID(), 
-        //     type: PathType.STRAIGHT, 
-        //     waypoints: [
-        //         { id: generateUUID(), local: { x: 0, y: 0, z: 30 }, altitudeReference: AltitudeReference.RELATIVE, speed: 5 },
-        //         { id: generateUUID(), local: { x: 50, y: 0, z: 30 }, altitudeReference: AltitudeReference.RELATIVE, speed: 5 },
-        //     ],
-        //     color: '#ff0000\'
-        // }
-    ],
-    gcps: [], // Start with no GCPs for simplicity, or add defaults
+    pathSegments: [], // Start empty
+    gcps: DEFAULT_DEV_GCPS, // Use the dynamically created GCPs
     defaultAltitude: 30,
     defaultSpeed: 5,
-    takeoffPoint: { x: 0, y: 0, z: 0 }, // Default takeoff at origin
+    takeoffPoint: DEV_TAKEOFF_POINT, // Use the defined takeoff point
     safetyParams: {
         rtlAltitude: 50,
         climbSpeed: 2.5,
@@ -432,45 +466,29 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
       const { name, region } = action.payload;
       const now = new Date();
       
-      // Create default GCPs - always center scene at GCP-A (0,0,0)
-      // Use a triangle with GCP-A at the center/origin
-      const feetToMeters = 0.3048;
-      const sideLength = 15 * feetToMeters; // 15 feet in meters
-      const defaultGcpPoints: Array<{ name: string; x: number; y: number; z: number }> = [
-        { name: 'GCP-A', x: 0, y: 0, z: 0 }, // Origin GCP - Center of the scene
-        { name: 'GCP-B', x: sideLength, y: 0, z: 0 }, // To the right (East) of GCP-A
-        { name: 'GCP-C', x: 0, y: sideLength, z: 0 }, // To the front (North) of GCP-A
-      ];
-
-      // Create GCP objects
-      const defaultGcps: GCP[] = defaultGcpPoints.map(p => ({
-        id: generateUUID(),
-        name: p.name,
-        lat: 0, lng: 0, altitude: 0, // Global coords TBD/calculated later if needed
-        local: { x: p.x, y: p.y, z: p.z },
-        color: p.name === 'GCP-A' ? '#ff0000' : '#00ff00', // Make GCP-A red for visibility
-        size: p.name === 'GCP-A' ? 1.5 : 1, // Make GCP-A slightly larger
-      }));
+      // --- Use the new default GCP creation logic ---
+      // Define the takeoff point for a *newly* created mission (can differ from dev default)
+      const newMissionTakeoffPoint: LocalCoord = { x: 0, y: 0, z: 0 }; // Default for non-dev creation
+      const newMissionGcps = createDefaultDevGcps(newMissionTakeoffPoint, GCP_SIDE_LENGTH_METERS); 
+      // --- End GCP logic update ---
 
       const newMission: Mission = {
         id: generateUUID(),
         name: name || 'New Mission',
         region: region,
         pathSegments: [],
-        gcps: defaultGcps,
-        defaultAltitude: 50, // Default altitude (meters AGL)
-        defaultSpeed: 5, // Default speed (m/s)
+        gcps: newMissionGcps, // Use newly generated GCPs for this mission instance
+        defaultAltitude: 50, 
+        defaultSpeed: 5, 
         createdAt: now,
         updatedAt: now,
         localOrigin: region.center,
-        // Set default takeoff point at the center (GCP-A location)
-        takeoffPoint: { x: 0, y: 0, z: 0 },
-        // Add default safety parameters
+        takeoffPoint: newMissionTakeoffPoint, // Use the specific takeoff point for this new mission
         safetyParams: {
-          rtlAltitude: 50, // Meters
-          climbSpeed: 2.5, // m/s
-          failsafeAction: 'RTL', // Default action on failsafe
-          missionEndAction: 'RTL', // Default action at mission end
+          rtlAltitude: 50, 
+          climbSpeed: 2.5, 
+          failsafeAction: 'RTL',
+          missionEndAction: 'RTL',
           climbToAltitude: 40 // Add default here too
         }
       };
@@ -1040,34 +1058,69 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     
     // --- Scene Settings --- 
     case 'UPDATE_SCENE_SETTINGS': {
-        // Ensure payload values have correct types before merging
         const validatedPayload: Partial<SceneSettings> = {};
         for (const key in action.payload) {
             const field = key as keyof SceneSettings;
             const value = (action.payload as any)[field];
 
             switch (field) {
+                // Numbers (Sliders / Numeric Inputs)
                 case 'gridSize':
                 case 'gridDivisions':
+                case 'gridMajorLineInterval':
                 case 'fov':
                 case 'gridFadeDistance':
+                case 'waterWaveSpeed':
+                case 'waterWaveScale':
+                case 'groundOpacity':
+                case 'waterOpacity':
                 case 'ambientLightIntensity':
                 case 'directionalLightIntensity':
-                    validatedPayload[field] = Number(value) || state.sceneSettings[field];
+                case 'environmentIntensity':
+                    const numValue = Number(value);
+                    // Use current state value as fallback if conversion fails
+                    validatedPayload[field] = !isNaN(numValue) ? numValue : state.sceneSettings[field]; 
                     break;
+                
+                // Colors (Strings)
                 case 'backgroundColor':
                 case 'gridColorCenterLine':
                 case 'gridColorGrid':
+                case 'gridMinorColor':
+                case 'gridMajorColor':
+                case 'waterColor':
                      // Basic hex validation (starts with #, 3/4/6/8 hex chars)
-                    if (/^#[0-9A-Fa-f]{3,8}$/.test(value)) {
-                        validatedPayload[field] = String(value);
+                    if (typeof value === 'string' && /^#[0-9A-Fa-f]{3,8}$/.test(value)) {
+                        validatedPayload[field] = value;
                     } else {
+                        console.warn(`[MissionReducer] Invalid color value for ${field}: ${value}. Keeping existing.`);
                         validatedPayload[field] = state.sceneSettings[field]; // Keep old if invalid
                     }
                     break;
+                
+                // Booleans (Switches / Checkboxes)
                 case 'gridVisible':
+                case 'gridAutoScale':
+                case 'gridShowUnderWater':
+                case 'gridEnhancedVisibility':
+                case 'axesVisible':
+                case 'hideGroundPlane':
+                case 'showBelowGround':
+                case 'waterEnabled':
+                case 'cameraDamping':
+                case 'cameraInvertY':
                 case 'skyEnabled':
+                case 'shadowsEnabled':
                     validatedPayload[field] = Boolean(value);
+                    break;
+                
+                // Specific Types
+                case 'gridUnit':
+                    if (value === 'meters' || value === 'feet') {
+                        validatedPayload[field] = value;
+                    } else {
+                         validatedPayload[field] = state.sceneSettings[field];
+                    }
                     break;
                 case 'sunPosition':
                     // Ensure it's an array of 3 numbers
@@ -1077,16 +1130,31 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
                          validatedPayload[field] = state.sceneSettings[field]; // Keep old if invalid
                     }
                     break;
+
+                // NEW: Handle Environment Map settings
+                case 'environmentMap':
+                    // Allow setting to null or a string value
+                    validatedPayload[field] = typeof value === 'string' || value === null ? value : state.sceneSettings[field];
+                    break;
+
+                // Ignore any unexpected fields silently
                 default:
-                    // Ignore unexpected fields
+                    console.warn(`[MissionReducer] Ignoring unexpected field in UPDATE_SCENE_SETTINGS: ${field}`);
                     break;
             }
         }
-
-        return {
-            ...state,
-            sceneSettings: { ...state.sceneSettings, ...validatedPayload },
-        };
+        
+        // Only update state if there are valid changes
+        if (Object.keys(validatedPayload).length > 0) {
+          console.log("[MissionReducer] Applying validated scene settings update:", validatedPayload);
+          return {
+              ...state,
+              sceneSettings: { ...state.sceneSettings, ...validatedPayload },
+          };
+        } else {
+          console.log("[MissionReducer] No valid scene settings changes detected in payload.");
+          return state; // No valid changes, return current state
+        }
     }
     
     case 'SET_HARDWARE': {
@@ -1274,6 +1342,17 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     }
     
     case 'UPDATE_SCENE_OBJECT': {
+        // Add debugging for scale issues
+        if (action.payload.scale) {
+            console.log('[MissionReducer] UPDATE_SCENE_OBJECT scale values:', {
+                objectId: action.payload.id,
+                scaleX: action.payload.scale.x,
+                scaleY: action.payload.scale.y,
+                scaleZ: action.payload.scale.z,
+                type: action.payload.type || 'unknown'
+            });
+        }
+
         return {
             ...state,
             sceneObjects: state.sceneObjects.map(obj => 
@@ -1447,12 +1526,85 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
         isPerformingHeavyOperation: action.payload
       };
 
+    case 'MOVE_SCENE_OBJECT': {
+        const { type, position, heightOffset } = action.payload;
+        
+        // Find all objects of the specified type and update their positions
+        const updatedObjects = state.sceneObjects.map(obj => {
+            if (obj.type === type) {
+                return {
+                    ...obj,
+                    position: position,
+                    ...(heightOffset !== undefined ? { heightOffset } : {})
+                };
+            }
+            return obj;
+        });
+        
+        return {
+            ...state,
+            sceneObjects: updatedObjects
+        };
+    }
+
     default:
       return state;
   }
 }
 
-// Create the context
+// Create separate contexts for different parts of the state to prevent unnecessary re-renders
+const MissionDataContext = createContext<{
+  missions: Mission[];
+  currentMission: Mission | null;
+  selectedPathSegmentIds: string[];
+  selectedWaypoint: Waypoint | null;
+  selectedPathSegment: PathSegment | null;
+  models: MissionModel[];
+} | undefined>(undefined);
+
+const MissionUIContext = createContext<{
+  isSimulating: boolean;
+  simulationTime: number;
+  simulationSpeed: number;
+  simulationProgress: MissionState['simulationProgress'];
+  isLive: boolean;
+  viewMode: 'CESIUM' | 'LOCAL_3D';
+  isEditing: boolean;
+  isPerformingHeavyOperation: boolean;
+  selectedPoint: LatLng | null;
+  tempRegion: MissionState['tempRegion'];
+  regionName: string;
+  drawingMode: 'polygon' | null;
+  polygonPoints: LocalCoord[];
+  polygonPreviewPoint: LocalCoord | null;
+  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation';
+  isSelectingTakeoffPoint: boolean;
+  isDroneVisible: boolean;
+  isCameraFrustumVisible: boolean;
+  hiddenGcpIds: string[];
+  sceneSettings: SceneSettings;
+} | undefined>(undefined);
+
+const MissionHardwareContext = createContext<{
+  hardware: HardwareState | null;
+} | undefined>(undefined);
+
+const MissionSceneContext = createContext<{
+  sceneObjects: SceneObject[];
+  editingSceneObjectId: string | null;
+  selectedFace: SelectedFaceInfo | null;
+  isFaceSelectionModeActive: boolean;
+  missionAreas: MissionArea[];
+  transformObjectId: string | null;
+} | undefined>(undefined);
+
+const MissionRealTimeContext = createContext<{
+  realtimeTelemetry: RealtimeTelemetry | null;
+  liveSensorStatus: LiveSensorStatus | null;
+  missionExecutionStatus: MissionExecutionStatus | null;
+} | undefined>(undefined);
+
+// Original full context for dispatch operations
 export interface MissionContextType {
   state: MissionState;
   dispatch: React.Dispatch<MissionAction>;
@@ -1467,18 +1619,128 @@ interface MissionProviderProps {
 
 export const MissionProvider: React.FC<MissionProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(missionReducer, initialState);
-    const { appMode } = useAppContext(); // <-- Get appMode from AppContext
+    const { appMode } = useAppContext();
+
+    // Memoize dispatch actions to prevent recreation of function references
+    const memoizedDispatch = useCallback((action: MissionAction) => {
+        // Add performance tracking for expensive operations
+        if (
+            action.type === 'ADD_SCENE_OBJECT' || 
+            action.type === 'UPDATE_SCENE_OBJECT' || 
+            action.type === 'SET_ACTIVE_MISSION'
+        ) {
+            console.time(`Action: ${action.type}`);
+            dispatch(action);
+            console.timeEnd(`Action: ${action.type}`);
+        } else {
+            dispatch(action);
+        }
+    }, []);
+
+    // Split state into memoized chunks to prevent unnecessary re-renders
+    const missionDataValue = useMemo(() => ({
+        missions: state.missions,
+        currentMission: state.currentMission,
+        selectedPathSegmentIds: state.selectedPathSegmentIds,
+        selectedWaypoint: state.selectedWaypoint,
+        selectedPathSegment: state.selectedPathSegment,
+        models: state.models
+    }), [
+        state.missions, 
+        state.currentMission, 
+        state.selectedPathSegmentIds,
+        state.selectedWaypoint,
+        state.selectedPathSegment,
+        state.models
+    ]);
+
+    const missionUIValue = useMemo(() => ({
+        isSimulating: state.isSimulating,
+        simulationTime: state.simulationTime,
+        simulationSpeed: state.simulationSpeed,
+        simulationProgress: state.simulationProgress,
+        isLive: state.isLive,
+        viewMode: state.viewMode,
+        isEditing: state.isEditing,
+        isPerformingHeavyOperation: state.isPerformingHeavyOperation,
+        selectedPoint: state.selectedPoint,
+        tempRegion: state.tempRegion,
+        regionName: state.regionName,
+        drawingMode: state.drawingMode,
+        polygonPoints: state.polygonPoints,
+        polygonPreviewPoint: state.polygonPreviewPoint,
+        activeControlPane: state.activeControlPane,
+        isSelectingTakeoffPoint: state.isSelectingTakeoffPoint,
+        isDroneVisible: state.isDroneVisible,
+        isCameraFrustumVisible: state.isCameraFrustumVisible,
+        hiddenGcpIds: state.hiddenGcpIds,
+        sceneSettings: state.sceneSettings
+    }), [
+        state.isSimulating,
+        state.simulationTime,
+        state.simulationSpeed,
+        state.simulationProgress,
+        state.isLive,
+        state.viewMode,
+        state.isEditing,
+        state.isPerformingHeavyOperation,
+        state.selectedPoint,
+        state.tempRegion,
+        state.regionName,
+        state.drawingMode,
+        state.polygonPoints,
+        state.polygonPreviewPoint,
+        state.activeControlPane,
+        state.isSelectingTakeoffPoint,
+        state.isDroneVisible,
+        state.isCameraFrustumVisible,
+        state.hiddenGcpIds,
+        state.sceneSettings
+    ]);
+
+    const missionHardwareValue = useMemo(() => ({
+        hardware: state.hardware
+    }), [state.hardware]);
+
+    const missionSceneValue = useMemo(() => ({
+        sceneObjects: state.sceneObjects,
+        editingSceneObjectId: state.editingSceneObjectId,
+        selectedFace: state.selectedFace,
+        isFaceSelectionModeActive: state.isFaceSelectionModeActive,
+        missionAreas: state.missionAreas,
+        transformObjectId: state.transformObjectId
+    }), [
+        state.sceneObjects,
+        state.editingSceneObjectId,
+        state.selectedFace,
+        state.isFaceSelectionModeActive,
+        state.missionAreas,
+        state.transformObjectId
+    ]);
+
+    const missionRealTimeValue = useMemo(() => ({
+        realtimeTelemetry: state.realtimeTelemetry,
+        liveSensorStatus: state.liveSensorStatus,
+        missionExecutionStatus: state.missionExecutionStatus
+    }), [
+        state.realtimeTelemetry,
+        state.liveSensorStatus,
+        state.missionExecutionStatus
+    ]);
+
+    // Original context value for backward compatibility
+    const contextValue = useMemo(() => ({
+        state,
+        dispatch: memoizedDispatch
+    }), [state, memoizedDispatch]);
 
     // --- Load Default Mission Effect based on AppContext ---
     useEffect(() => {
         // Check if appMode is 'dev' and if no mission or no hardware is currently loaded
         if (appMode === 'dev' && (!state.currentMission || !state.hardware)) {
-            console.warn("[Dev Mode] App mode set to 'dev'. Loading default mission and hardware..."); 
-            
-            // Load default mission if needed
+            // Only dispatch if we need to load default data
             if (!state.currentMission) {
                 dispatch({ type: 'SET_MISSION', payload: DEFAULT_DEV_MISSION });
-                console.log("[Dev Mode] Dispatched SET_MISSION with default.");
             }
 
             // Load default hardware if needed
@@ -1489,15 +1751,6 @@ export const MissionProvider: React.FC<MissionProviderProps> = ({ children }) =>
                 const defaultFStops = defaultLens ? getLensFStops(defaultLens).filter(s => !isNaN(s)).sort((a,b) => a-b) : [];
                 const defaultFStop = defaultFStops.length > 0 ? defaultFStops[0] : null;
                 
-                console.log("[Dev Mode] Preparing default hardware object:", {
-                    ...DEFAULT_DEV_HARDWARE,
-                    cameraDetails: defaultCamera,
-                    lensDetails: defaultLens,
-                    droneDetails: defaultDrone,
-                    availableFStops: defaultFStops,
-                    fStop: defaultFStop, // Ensure default fStop is included
-                });
-
                 dispatch({
                     type: 'SET_HARDWARE', 
                     payload: {
@@ -1506,44 +1759,84 @@ export const MissionProvider: React.FC<MissionProviderProps> = ({ children }) =>
                         lensDetails: defaultLens,
                         droneDetails: defaultDrone,
                         availableFStops: defaultFStops,
-                        fStop: defaultFStop, // Pass calculated default fStop
-                        // focusDistance is already set in meters in DEFAULT_DEV_HARDWARE
+                        fStop: defaultFStop,
                     }
                 });
-                console.log("[Dev Mode] Dispatched SET_HARDWARE with default.");
             }
         }
-    }, [appMode, state.currentMission, state.hardware, dispatch]); // Add state.hardware dependency
-    // --- End Load Default Mission Effect ---
-
-    // TODO LATER: Add useEffect here for ROS connection management using roslibjs
+    }, [appMode]); // Only depend on appMode, otherwise will rerun on every state change
 
     return (
-        <MissionContext.Provider value={{ state, dispatch }}>
-            {children}
+        <MissionContext.Provider value={contextValue}>
+            <MissionDataContext.Provider value={missionDataValue}>
+                <MissionUIContext.Provider value={missionUIValue}>
+                    <MissionHardwareContext.Provider value={missionHardwareValue}>
+                        <MissionSceneContext.Provider value={missionSceneValue}>
+                            <MissionRealTimeContext.Provider value={missionRealTimeValue}>
+                                {children}
+                            </MissionRealTimeContext.Provider>
+                        </MissionSceneContext.Provider>
+                    </MissionHardwareContext.Provider>
+                </MissionUIContext.Provider>
+            </MissionDataContext.Provider>
         </MissionContext.Provider>
     );
 };
 
-// Custom hook to use the mission context
+// Custom hooks for using different parts of context to prevent unnecessary re-renders
 export function useMission() {
-  const context = useContext(MissionContext);
-  if (context === undefined) {
-    throw new Error('useMission must be used within a MissionProvider');
-  }
-  return context;
+    const context = useContext(MissionContext);
+    if (context === undefined) {
+        throw new Error('useMission must be used within a MissionProvider');
+    }
+    return context;
 }
 
-// ADD Action to start/stop editing
+export function useMissionData() {
+    const context = useContext(MissionDataContext);
+    if (context === undefined) {
+        throw new Error('useMissionData must be used within a MissionProvider');
+    }
+    return context;
+}
+
+export function useMissionUI() {
+    const context = useContext(MissionUIContext);
+    if (context === undefined) {
+        throw new Error('useMissionUI must be used within a MissionProvider');
+    }
+    return context;
+}
+
+export function useMissionHardware() {
+    const context = useContext(MissionHardwareContext);
+    if (context === undefined) {
+        throw new Error('useMissionHardware must be used within a MissionProvider');
+    }
+    return context;
+}
+
+export function useMissionScene() {
+    const context = useContext(MissionSceneContext);
+    if (context === undefined) {
+        throw new Error('useMissionScene must be used within a MissionProvider');
+    }
+    return context;
+}
+
+export function useMissionRealTime() {
+    const context = useContext(MissionRealTimeContext);
+    if (context === undefined) {
+        throw new Error('useMissionRealTime must be used within a MissionProvider');
+    }
+    return context;
+}
+
+// Regular action creator functions instead of hooks
 export const startEditSceneObject = (dispatch: Dispatch<MissionAction>, objectId: string) => {
-   // In a real implementation, this might dispatch an action like:
-   // dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: objectId });
-   // For now, we'll just log it as the state isn't fully implemented yet.
-   console.log(`[MissionContext] Placeholder: Start editing object ${objectId}`);
-   // We would also need state like `isEditModalOpen` managed here or locally.
+   dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: objectId });
 };
 
 export const finishEditSceneObject = (dispatch: Dispatch<MissionAction>) => {
-   // dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: null });
-   console.log(`[MissionContext] Placeholder: Finish editing object`);
+   dispatch({ type: 'SET_EDITING_SCENE_OBJECT_ID', payload: null });
 }; 

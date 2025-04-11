@@ -27,6 +27,7 @@ import { styled } from '@mui/material/styles';
 import { useMission } from '../../../context/MissionContext';
 import { AltitudeReference, LocalCoord, CameraParams, PathSegment, PathType, Waypoint, LatLng } from '../../../types/mission';
 import { generateRasterPattern } from '../../../utils/pathGeneration';
+import { addTakeoffAndLanding } from '../../../utils/pathUtils';
 import { v4 as uuidv4 } from 'uuid';
 import { localToLatLng } from '../../../utils/coordinateUtils';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -120,6 +121,8 @@ const RasterPatternStep: React.FC<RasterPatternStepProps> = ({ isEmbedded = fals
             return;
         }
         const { localOrigin, takeoffPoint, safetyParams, defaultSpeed } = currentMission;
+        
+        // Verify required mission parameters exist
         if (!localOrigin) {
             console.error("Cannot generate path: Mission local origin is not set.");
             return;
@@ -128,8 +131,12 @@ const RasterPatternStep: React.FC<RasterPatternStepProps> = ({ isEmbedded = fals
             console.error("Cannot generate path: Mission takeoff point is not set.");
             return;
         }
-        const missionEndAction = safetyParams?.missionEndAction ?? 'RTL';
+        if (!safetyParams) {
+            console.error("Cannot generate path: Mission safety parameters are not set.");
+            return;
+        }
 
+        // Parse and validate input values
         const lengthNum = parseFloat(patternLength);
         const spacingNum = parseFloat(patternSpacing);
         const passesNum = parseInt(numPasses, 10);
@@ -143,12 +150,14 @@ const RasterPatternStep: React.FC<RasterPatternStepProps> = ({ isEmbedded = fals
             return;
         }
 
+        // Calculate start position (adding the offset to takeoff point)
         const absoluteStartCoord: LocalCoord = {
             x: takeoffPoint.x + rasterStartOffset.x,
             y: takeoffPoint.y + rasterStartOffset.y,
             z: takeoffPoint.z + rasterStartOffset.z 
         };
         
+        // Define parameters for pattern generation
         const altRef = AltitudeReference.RELATIVE;
         const params = {
             startCoord: absoluteStartCoord, 
@@ -164,47 +173,37 @@ const RasterPatternStep: React.FC<RasterPatternStepProps> = ({ isEmbedded = fals
         };
 
         try {
-            let patternWaypoints: Waypoint[] = [];
-            patternWaypoints = generateRasterPattern(params);
+            // Step 1: Generate the base raster pattern
+            const patternWaypoints = generateRasterPattern(params);
             
             if (patternWaypoints.length === 0) {
                 console.error("Path generation resulted in zero waypoints.");
                 return;
             }
 
-            const fullPathWaypoints: Waypoint[] = [];
-            try {
-                const takeoffGroundCoord: LocalCoord = { ...takeoffPoint, z: 0 };
-                const takeoffGroundWaypoint = createWaypointFromLocal(takeoffGroundCoord, localOrigin, altRef, defaultCameraParams);
-                fullPathWaypoints.push(takeoffGroundWaypoint);
-
-                fullPathWaypoints.push(...patternWaypoints);
-
-                if (missionEndAction === 'RTL' || missionEndAction === 'LAND') {
-                    const landingGroundCoord: LocalCoord = { ...takeoffPoint, z: 0 };
-                    const landingGroundWaypoint = createWaypointFromLocal(landingGroundCoord, localOrigin, altRef, defaultCameraParams);
-                    const lastPatternWp = patternWaypoints[patternWaypoints.length - 1];
-                    if (lastPatternWp.local?.x !== landingGroundCoord.x || 
-                        lastPatternWp.local?.y !== landingGroundCoord.y || 
-                        lastPatternWp.local?.z !== landingGroundCoord.z) {
-                        fullPathWaypoints.push(landingGroundWaypoint);
-                    }
-                }
-
-            } catch (error) {
-                console.error("Error creating takeoff/landing waypoints:", error);
-                return;
-            }
-
-            const newPathSegment: PathSegment = {
+            // Step 2: Create the initial path segment
+            let rasterSegment: PathSegment = {
                 id: uuidv4(),
                 type: PathType.GRID,
-                waypoints: fullPathWaypoints,
-                speed: defaultSpeed ?? 5
+                waypoints: patternWaypoints,
+                speed: defaultSpeed ?? 5  // Use mission default speed or fallback to 5 m/s
             };
-    
-            console.log(`Dispatching ADD_PATH_SEGMENT with ${fullPathWaypoints.length} waypoints:`, newPathSegment);
-            dispatch({ type: 'ADD_PATH_SEGMENT', payload: newPathSegment });
+            
+            // Step 3: Add takeoff and landing based on safety parameters
+            // This will add proper takeoff sequence and handle RTL/LAND/HOLD for mission end
+            const enhancedSegment = addTakeoffAndLanding(
+                rasterSegment,
+                takeoffPoint,
+                safetyParams
+            );
+            
+            console.log(`Generated path segment with ${enhancedSegment.waypoints.length} waypoints (including takeoff/landing).`);
+            console.log(`Using mission settings: RTL Altitude=${safetyParams.rtlAltitude}m, ` +
+                        `Climb Speed=${safetyParams.climbSpeed}m/s, Flight Speed=${defaultSpeed}m/s, ` +
+                        `End Action=${safetyParams.missionEndAction}`);
+            
+            // Step 4: Add the enhanced segment to the mission
+            dispatch({ type: 'ADD_PATH_SEGMENT', payload: enhancedSegment });
 
         } catch (error) {
             console.error("Error during path generation:", error);

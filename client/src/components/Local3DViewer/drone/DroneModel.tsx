@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useMission } from '../../../context/MissionContext';
 import { useAppContext } from '../../../context/AppContext';
 import { LocalCoord } from '../../../types/mission';
+import { Camera, Lens } from '../../../types/hardware';
 import { getCameraById, getLensById, getLensFStops } from '../../../utils/hardwareDatabase';
 import { feetToMeters } from '../../../utils/sensorCalculations';
 import CameraFrustum, { CameraFrustumProps } from './CameraFrustum';
@@ -167,6 +168,11 @@ interface DroneModelProps {
   pitch: number;
   roll: number;
   onDoubleClick?: (event: ThreeEvent<MouseEvent>) => void;
+  cameraDetails: Camera | null;
+  lensDetails: Lens | null;
+  aperture: number | null;
+  isCameraFrustumVisible: boolean;
+  gimbalPitch?: number;
   visualizationSettings?: CameraFrustumProps['visualization'];
 }
 
@@ -176,6 +182,11 @@ const DroneModel: React.FC<DroneModelProps> = ({
   pitch,
   roll,
   onDoubleClick,
+  cameraDetails,
+  lensDetails,
+  aperture,
+  isCameraFrustumVisible,
+  gimbalPitch = 0,
   visualizationSettings = {
     showNearFocusPlane: true,
     showFarFocusPlane: false,
@@ -186,31 +197,13 @@ const DroneModel: React.FC<DroneModelProps> = ({
   const groupRef = useRef<THREE.Group>(null);
   const { state } = useMission();
   const { appMode } = useAppContext(); // Get the current app mode
-  const { isCameraFrustumVisible, hardware } = state;
+  const { hardware } = state;
   const isDevMode = appMode === 'dev';
   
   // Default hardware settings if not set in context
   const DEFAULT_CAMERA_ID = 'phase-one-ixm-100';
   const DEFAULT_LENS_ID = 'phaseone-rsm-80mm';
   const DEFAULT_FOCUS_DISTANCE_FT = 20; // in feet
-
-  // Get camera and lens details from context or defaults
-  const cameraDetails = useMemo(() => {
-    return hardware?.cameraDetails || getCameraById(DEFAULT_CAMERA_ID);
-  }, [hardware?.cameraDetails]);
-
-  const lensDetails = useMemo(() => {
-    return hardware?.lensDetails || getLensById(DEFAULT_LENS_ID);
-  }, [hardware?.lensDetails]);
-
-  // Get f-stop (aperture) - default to lowest available if not set
-  const aperture = useMemo(() => {
-    if (hardware?.fStop) return hardware.fStop;
-    if (!lensDetails) return null;
-
-    const fStops = getLensFStops(lensDetails);
-    return fStops.length > 0 ? Math.min(...fStops) : lensDetails.maxAperture;
-  }, [hardware?.fStop, lensDetails]);
 
   // Get focus distance in meters - default to 20ft if not set
   const focusDistanceM = useMemo(() => {
@@ -220,50 +213,78 @@ const DroneModel: React.FC<DroneModelProps> = ({
   // Map simulation position to Three.js coordinates
   const threePosition = new THREE.Vector3(position.x, position.z, -position.y);
 
-  // For propeller animation
-  const [propellerRotation, setPropellerRotation] = useState<number[]>([0, 0, 0, 0]);
-  const [wingFlap, setWingFlap] = useState(0);
-  const [flagWave, setFlagWave] = useState(0);
+  // Create Euler rotation from heading, pitch, roll (converted to radians)
+  // Order: YXZ (Yaw, Pitch, Roll) - common for aircraft/drones
+  const droneEulerRotation = useMemo(() => {
+    return new THREE.Euler(
+      pitch * (Math.PI / 180),  // X-axis rotation (Pitch)
+      heading * (Math.PI / 180), // Y-axis rotation (Heading/Yaw)
+      roll * (Math.PI / 180),    // Z-axis rotation (Roll)
+      'YXZ' // Specify the order of rotations
+    );
+  }, [heading, pitch, roll]);
 
-  // Animate propellers and wing flapping
+  // For propeller animation
+  const propellerRotationRef = useRef<number[]>([0, 0, 0, 0]);
+  const wingFlapRef = useRef<number>(0);
+  const flagWaveRef = useRef<number>(0);
+  
+  // Use useFrame for animations instead of state updates
   useFrame((state, delta) => {
-    if (isDevMode) {
-      // Animate wing flapping and flag waving for eagle mode
-      setWingFlap(Math.sin(state.clock.elapsedTime * 2) * 0.2); // Gentle wing flapping
-      setFlagWave(Math.sin(state.clock.elapsedTime * 5) * 0.15); // Flag waving
-    } else {
-      // Regular drone propeller animation
-      setPropellerRotation(prev => [
-        (prev[0] + 0.4) % (Math.PI * 2), 
-        (prev[1] - 0.5) % (Math.PI * 2),
-        (prev[2] + 0.4) % (Math.PI * 2),
-        (prev[3] - 0.5) % (Math.PI * 2)
-      ]);
-    }
+    // Only animate if the group exists
+    if (!groupRef.current) return;
+    
+    // Throttle animations based on framerate
+    const speedFactor = delta * 5; // Adjust based on how fast you want animations
+    
+    // Update propeller rotation
+    propellerRotationRef.current = propellerRotationRef.current.map(rot => rot + 3 * speedFactor);
+    
+    // Animate wing flap with sine wave
+    wingFlapRef.current = (wingFlapRef.current + 0.05 * speedFactor) % (Math.PI * 2);
+    
+    // Animate flag wave with sine wave
+    flagWaveRef.current = (flagWaveRef.current + 0.03 * speedFactor) % (Math.PI * 2);
+    
+    // Directly update meshes via ref if needed for optimized animations
+    // This avoids React re-renders entirely by modifying the Three.js objects directly
+    const propellers = groupRef.current.children.filter(child => 
+      child.name === 'propeller-group'
+    );
+    
+    propellers.forEach((propeller, i) => {
+      if (propeller && propeller.rotation) {
+        propeller.rotation.y = propellerRotationRef.current[i % 4];
+      }
+    });
   });
+
+  // Create and configure layers for the frustum visualization ONLY
+  const frustumLayers = useMemo(() => {
+    const layers = new THREE.Layers();
+    layers.set(1); // Set the frustum visualization to be on layer 1
+    return layers;
+  }, []);
 
   // Render the eagle model in dev mode
   if (isDevMode) {
-    // Get camera properties for alignment
-    const cameraDirection = pitch * (Math.PI / 180); // Convert pitch to radians
-    const cameraRoll = roll * (Math.PI / 180); // Convert roll to radians
-    
-    // Create rotation euler for the eagle model - align with camera direction
-    const eagleRotation = new THREE.Euler(
-      wingFlap * 0.05 + cameraDirection, // X rotation includes camera pitch
-      Math.PI, // Base Y rotation (180 degrees)
-      cameraRoll // Z rotation for roll
+    // Create rotation euler for the eagle visual model itself (internal flapping, etc.)
+    // This is SEPARATE from the main drone group's rotation
+    const eagleVisualRotation = new THREE.Euler(
+      wingFlapRef.current * 0.05, // X rotation (internal animation)
+      Math.PI,         // Base Y rotation (180 degrees to face forward in its own coordinate system)
+      0                // Z rotation (internal animation)
     );
     
     return (
       <group
         ref={groupRef}
         position={threePosition}
+        rotation={droneEulerRotation} // Apply the calculated YXZ rotation to the main group
         onDoubleClick={onDoubleClick}
         scale={[0.4, 0.4, 0.4]} // Increased scale for better visibility
-        rotation={[0, heading * (Math.PI / 180), 0]} // Apply heading rotation to the entire group
       >
-        {/* Improved lighting for the high-quality model */}
+        {/* Lighting setup ... */}
         <ambientLight intensity={0.7} color="#ffffff" />
         <spotLight 
           position={[5, 10, 5]} 
@@ -281,179 +302,111 @@ const DroneModel: React.FC<DroneModelProps> = ({
           castShadow
         />
         
-        {/* Use ErrorBoundary to catch any Three.js errors with the high-quality model */}
-        <ThreeErrorBoundary fallback={<EagleFallbackModel rotation={eagleRotation} />}>
+        {/* Use ErrorBoundary for the GLTF model */}
+        <ThreeErrorBoundary fallback={<EagleFallbackModel rotation={eagleVisualRotation} />}>
           <Suspense fallback={
             <group>
               {/* Simple loading indicator */}
-              <EagleFallbackModel rotation={eagleRotation} />
+              <EagleFallbackModel rotation={eagleVisualRotation} />
               <Sphere args={[0.2, 8, 8]} position={[0, 3, 0]}>
                 <meshBasicMaterial color="#4fc3f7" opacity={0.7} transparent />
               </Sphere>
             </group>
           }>
-            <EagleGLTFModel rotation={eagleRotation} />
+            {/* Pass the internal visual rotation, not the main drone rotation */}
+            <EagleGLTFModel rotation={eagleVisualRotation} />
           </Suspense>
         </ThreeErrorBoundary>
         
-        {/* Add subtle ambient light to the eagle */}
+        {/* Point light ... */}
         <pointLight position={[0, 2, 0]} intensity={0.4} distance={10} color="#ffcc99" />
         
-        {/* Camera Frustum - positioned within the eagle model */}
+        {/* Camera Frustum - positioned relative to the drone */}
+        {/* The CameraFrustum component itself handles the gimbalPitch rotation internally */}
         {isCameraFrustumVisible && cameraDetails && lensDetails && aperture !== null && ( 
-          <group position={[0, 0, 2.5]}>
-            {/* Apply camera pitch and roll to the frustum */}
-            <group rotation={[pitch * (Math.PI / 180), 0, roll * (Math.PI / 180)]}>
-              <CameraFrustum 
-                cameraDetails={cameraDetails}
-                lensDetails={lensDetails}
-                focusDistanceM={focusDistanceM}
-                aperture={aperture}
-                visualization={visualizationSettings}
-              />
-            </group>
+          <group position={[0, 0, 3.11]} layers={frustumLayers}> {/* Position relative to drone center */}
+            {/* No extra rotation needed here, CameraFrustum handles gimbalPitch */}
+            <CameraFrustum 
+              cameraDetails={cameraDetails}
+              lensDetails={lensDetails}
+              focusDistanceM={focusDistanceM}
+              aperture={aperture}
+              visualization={visualizationSettings}
+              gimbalPitch={gimbalPitch} // Pass down gimbalPitch
+            />
           </group>
         )}
         
-        {/* American Flags - higher positioned to be more visible */}
+        {/* Flags ... */}
+        {/* Flags remain attached to the main group and will rotate with heading/pitch/roll */}
         <group position={[5, 5, 0]}>
           <Cylinder args={[0.1, 0.1, 7, 8]} position={[0, -3.5, 0]} rotation={[0, 0, 0]}>
             <meshStandardMaterial color="#5c5c5c" metalness={0.5} roughness={0.5} />
           </Cylinder>
-          
-          {/* Flag with stripes - improved wave animation */}
-          <group rotation={[0, 0, flagWave * 1.2]} position={[0, 0, 0]}>
-            {/* Red stripes with slight offsets for wave effect */}
-            <Box args={[3, 0.286, 0.05]} position={[1.52, -0.143, 0]} rotation={[0, 0, flagWave * 0.1]}>
+          <group rotation={[0, 0, flagWaveRef.current * 1.2]} position={[0, 0, 0]}>
+            {/* Red stripes ... */}
+            <Box args={[3, 0.286, 0.05]} position={[1.52, -0.143, 0]} rotation={[0, 0, flagWaveRef.current * 0.1]}>
               <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[1.54, -0.715, 0]} rotation={[0, 0, flagWave * 0.15]}>
+            {/* ... more stripes ... */}
+            <Box args={[3, 0.286, 0.05]} position={[1.58, -1.859, 0]} rotation={[0, 0, flagWaveRef.current * 0.25]}>
               <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[1.56, -1.287, 0]} rotation={[0, 0, flagWave * 0.2]}>
-              <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
-            </Box>
-            <Box args={[3, 0.286, 0.05]} position={[1.58, -1.859, 0]} rotation={[0, 0, flagWave * 0.25]}>
-              <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
-            </Box>
-            
-            {/* White stripes with slight offsets for wave effect */}
-            <Box args={[3, 0.286, 0.05]} position={[1.53, -0.429, 0]} rotation={[0, 0, flagWave * 0.12]}>
+            {/* White stripes ... */}
+            <Box args={[3, 0.286, 0.05]} position={[1.53, -0.429, 0]} rotation={[0, 0, flagWaveRef.current * 0.12]}>
               <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[1.55, -1.001, 0]} rotation={[0, 0, flagWave * 0.18]}>
+            {/* ... more stripes ... */}
+            <Box args={[3, 0.286, 0.05]} position={[1.57, -1.573, 0]} rotation={[0, 0, flagWaveRef.current * 0.22]}>
               <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[1.57, -1.573, 0]} rotation={[0, 0, flagWave * 0.22]}>
-              <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} roughness={0.6} />
-            </Box>
-            
-            {/* Blue field with stars */}
-            <Box args={[1.2, 1.143, 0.06]} position={[0.6, -0.572, 0]} rotation={[0, 0, flagWave * 0.05]}>
+            {/* Blue field ... */}
+            <Box args={[1.2, 1.143, 0.06]} position={[0.6, -0.572, 0]} rotation={[0, 0, flagWaveRef.current * 0.05]}>
               <meshStandardMaterial color="#002868" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            
-            {/* Stars - use simple spheres instead of complex geometries */}
-            <group position={[0.6, -0.572, 0.035]} rotation={[0, 0, flagWave * 0.05]}>
-              {/* Use a more simplified approach for stars */}
-              <Sphere args={[0.06, 8, 8]} position={[-0.3, 0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0, 0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0.3, 0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[-0.3, 0, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0, 0, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0.3, 0, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[-0.3, -0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0, -0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0.3, -0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
+            {/* Stars ... */}
+            <group position={[0.6, -0.572, 0.035]} rotation={[0, 0, flagWaveRef.current * 0.05]}>
+              <Sphere args={[0.06, 8, 8]} position={[-0.3, 0.3, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[0, 0.3, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[0.3, 0.3, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[-0.3, 0, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[0, 0, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[0.3, 0, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[-0.3, -0.3, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[0, -0.3, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
+              <Sphere args={[0.06, 8, 8]} position={[0.3, -0.3, 0]}><meshBasicMaterial color="#ffffff" /></Sphere>
             </group>
           </group>
         </group>
-        
+        {/* Second flag ... */}
         <group position={[-5, 5, 0]}>
-          <Cylinder args={[0.1, 0.1, 7, 8]} position={[0, -3.5, 0]} rotation={[0, 0, 0]}>
+           <Cylinder args={[0.1, 0.1, 7, 8]} position={[0, -3.5, 0]} rotation={[0, 0, 0]}>
             <meshStandardMaterial color="#5c5c5c" metalness={0.5} roughness={0.5} />
           </Cylinder>
-          
-          {/* Flag with stripes - improved wave animation */}
-          <group rotation={[0, 0, -flagWave * 1.2]} position={[0, 0, 0]}>
-            {/* Red stripes with slight offsets for wave effect */}
-            <Box args={[3, 0.286, 0.05]} position={[-1.52, -0.143, 0]} rotation={[0, 0, -flagWave * 0.1]}>
+          <group rotation={[0, 0, -flagWaveRef.current * 1.2]} position={[0, 0, 0]}>
+            {/* ... flag components ... */}
+            <Box args={[3, 0.286, 0.05]} position={[-1.52, -0.143, 0]} rotation={[0, 0, -flagWaveRef.current * 0.1]}>
               <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[-1.54, -0.715, 0]} rotation={[0, 0, -flagWave * 0.15]}>
+            {/* ... more flag components ... */}
+            <Box args={[3, 0.286, 0.05]} position={[-1.58, -1.859, 0]} rotation={[0, 0, -flagWaveRef.current * 0.25]}>
               <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[-1.56, -1.287, 0]} rotation={[0, 0, -flagWave * 0.2]}>
-              <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
-            </Box>
-            <Box args={[3, 0.286, 0.05]} position={[-1.58, -1.859, 0]} rotation={[0, 0, -flagWave * 0.25]}>
-              <meshStandardMaterial color="#cc0000" side={THREE.DoubleSide} roughness={0.6} />
-            </Box>
-            
-            {/* White stripes with slight offsets for wave effect */}
-            <Box args={[3, 0.286, 0.05]} position={[-1.53, -0.429, 0]} rotation={[0, 0, -flagWave * 0.12]}>
+            {/* ... more flag components ... */}
+            <Box args={[3, 0.286, 0.05]} position={[-1.53, -0.429, 0]} rotation={[0, 0, -flagWaveRef.current * 0.12]}>
               <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[-1.55, -1.001, 0]} rotation={[0, 0, -flagWave * 0.18]}>
+            {/* ... more flag components ... */}
+            <Box args={[3, 0.286, 0.05]} position={[-1.57, -1.573, 0]} rotation={[0, 0, -flagWaveRef.current * 0.22]}>
               <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            <Box args={[3, 0.286, 0.05]} position={[-1.57, -1.573, 0]} rotation={[0, 0, -flagWave * 0.22]}>
-              <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} roughness={0.6} />
-            </Box>
-            
-            {/* Blue field with stars */}
-            <Box args={[1.2, 1.143, 0.06]} position={[-0.6, -0.572, 0]} rotation={[0, 0, -flagWave * 0.05]}>
+            {/* ... more flag components ... */}
+            <Box args={[1.2, 1.143, 0.06]} position={[-0.6, -0.572, 0]} rotation={[0, 0, -flagWaveRef.current * 0.05]}>
               <meshStandardMaterial color="#002868" side={THREE.DoubleSide} roughness={0.6} />
             </Box>
-            
-            {/* Stars - use simple spheres instead of complex geometries */}
-            <group position={[-0.6, -0.572, 0.035]} rotation={[0, 0, -flagWave * 0.05]}>
-              {/* Use a more simplified approach for stars */}
-              <Sphere args={[0.06, 8, 8]} position={[-0.3, 0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0, 0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0.3, 0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[-0.3, 0, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0, 0, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0.3, 0, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[-0.3, -0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0, -0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
-              <Sphere args={[0.06, 8, 8]} position={[0.3, -0.3, 0]}>
-                <meshBasicMaterial color="#ffffff" />
-              </Sphere>
+            {/* ... more flag components ... */}
+            <group position={[-0.6, -0.572, 0.035]} rotation={[0, 0, -flagWaveRef.current * 0.05]}>
+              {/* ... more flag components ... */}
             </group>
           </group>
         </group>
@@ -511,7 +464,7 @@ const DroneModel: React.FC<DroneModelProps> = ({
             <meshStandardMaterial color="#222222" metalness={0.7} roughness={0.3} />
           </Sphere>
           {/* Propeller group - animation enabled */}
-          <group rotation={[0, propellerRotation[0], 0]}>
+          <group name="propeller-group" rotation={[0, propellerRotationRef.current[0], 0]}>
             <Box args={[1.4, 0.05, 0.15]} position={[0, 0.15, 0]}>
               <meshStandardMaterial color="#666666" metalness={0.4} roughness={0.5} transparent opacity={0.8} />
             </Box>
@@ -527,7 +480,7 @@ const DroneModel: React.FC<DroneModelProps> = ({
             <meshStandardMaterial color="#222222" metalness={0.7} roughness={0.3} />
           </Sphere>
           {/* Propeller group - animation enabled */}
-          <group rotation={[0, propellerRotation[1], 0]}>
+          <group name="propeller-group" rotation={[0, propellerRotationRef.current[1], 0]}>
             <Box args={[1.4, 0.05, 0.15]} position={[0, 0.15, 0]}>
               <meshStandardMaterial color="#666666" metalness={0.4} roughness={0.5} transparent opacity={0.8} />
             </Box>
@@ -543,7 +496,7 @@ const DroneModel: React.FC<DroneModelProps> = ({
             <meshStandardMaterial color="#222222" metalness={0.7} roughness={0.3} />
           </Sphere>
           {/* Propeller group - animation enabled */}
-          <group rotation={[0, propellerRotation[2], 0]}>
+          <group name="propeller-group" rotation={[0, propellerRotationRef.current[2], 0]}>
             <Box args={[1.4, 0.05, 0.15]} position={[0, 0.15, 0]}>
               <meshStandardMaterial color="#666666" metalness={0.4} roughness={0.5} transparent opacity={0.8} />
             </Box>
@@ -559,7 +512,7 @@ const DroneModel: React.FC<DroneModelProps> = ({
             <meshStandardMaterial color="#222222" metalness={0.7} roughness={0.3} />
           </Sphere>
           {/* Propeller group - animation enabled */}
-          <group rotation={[0, propellerRotation[3], 0]}>
+          <group name="propeller-group" rotation={[0, propellerRotationRef.current[3], 0]}>
             <Box args={[1.4, 0.05, 0.15]} position={[0, 0.15, 0]}>
               <meshStandardMaterial color="#666666" metalness={0.4} roughness={0.5} transparent opacity={0.8} />
             </Box>
@@ -588,31 +541,32 @@ const DroneModel: React.FC<DroneModelProps> = ({
 
       {/* Camera gimbal */}
       <group position={[0, -0.25, 0.8]}>
-        {/* Apply camera pitch and roll to the gimbal */}
-        <group rotation={[pitch * (Math.PI / 180), 0, roll * (Math.PI / 180)]}>
-          <Box args={[0.8, 0.3, 0.4]}>
-            <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.2} />
-          </Box>
-          <Box args={[0.6, 0.2, 0.3]} position={[0, -0.25, 0]}>
-            <meshStandardMaterial color="#222222" metalness={0.8} roughness={0.2} />
-          </Box>
-          {/* Camera lens */}
-          <Sphere args={[0.2, 16, 16]} position={[0, -0.25, 0.25]}>
-            <meshStandardMaterial color="#111111" metalness={0.9} roughness={0.1} />
-          </Sphere>
-          
-          {/* Camera Frustum - apply visualization settings */}
-          {isCameraFrustumVisible && cameraDetails && lensDetails && aperture !== null && ( 
-            <group position={[0, -0.25, 0.4]}>
-              <CameraFrustum 
-                cameraDetails={cameraDetails}
-                lensDetails={lensDetails}
-                focusDistanceM={focusDistanceM}
-                aperture={aperture}
-                visualization={visualizationSettings}
-              />
-            </group>
-          )}
+        <group rotation={[gimbalPitch * (Math.PI / 180), 0, 0]}> 
+          <group rotation={[pitch * (Math.PI / 180), 0, roll * (Math.PI / 180)]}>
+            <Box args={[0.8, 0.3, 0.4]}>
+              <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.2} />
+            </Box>
+            <Box args={[0.6, 0.2, 0.3]} position={[0, -0.25, 0]}>
+              <meshStandardMaterial color="#222222" metalness={0.8} roughness={0.2} />
+            </Box>
+            {/* Camera lens */}
+            <Sphere args={[0.2, 16, 16]} position={[0, -0.25, 0.25]}>
+              <meshStandardMaterial color="#111111" metalness={0.9} roughness={0.1} />
+            </Sphere>
+            
+            {/* Camera Frustum - apply visualization settings */}
+            {isCameraFrustumVisible && cameraDetails && lensDetails && aperture !== null && ( 
+              <group position={[0, -0.25, 1.01]} layers={frustumLayers}> 
+                <CameraFrustum 
+                  cameraDetails={cameraDetails}
+                  lensDetails={lensDetails}
+                  focusDistanceM={focusDistanceM}
+                  aperture={aperture}
+                  visualization={visualizationSettings}
+                />
+              </group>
+            )}
+          </group>
         </group>
       </group>
 

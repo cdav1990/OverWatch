@@ -1,6 +1,6 @@
-import React, { useRef, useMemo, useState } from 'react';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Plane, Line, Html } from '@react-three/drei';
+import { Plane, Line, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { Camera, Lens } from '../../../types/hardware';
 import {
@@ -16,6 +16,7 @@ export interface CameraFrustumProps {
     lensDetails: Lens | null;
     focusDistanceM: number;
     aperture: number | null;
+    gimbalPitch?: number;
     visualization?: {
         showNearFocusPlane?: boolean;
         showFarFocusPlane?: boolean;
@@ -31,6 +32,7 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
     lensDetails,
     focusDistanceM,
     aperture,
+    gimbalPitch,
     visualization = {
         showNearFocusPlane: true,
         showFarFocusPlane: false,
@@ -38,9 +40,21 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
         showDOFInfo: true,
         showFootprintInfo: true,
         showFocusPlaneLabels: true
-    }
+    },
 }) => {
     const frustumRef = useRef<THREE.Group>(null);
+
+    // Apply the gimbal pitch to the frustum orientation
+    useFrame(() => {
+        if (frustumRef.current && gimbalPitch !== undefined) {
+            // Reset rotation first to avoid compounding
+            frustumRef.current.rotation.set(0, 0, 0); 
+            
+            // Apply gimbal pitch (convert degrees to radians)
+            const gimbalRad = THREE.MathUtils.degToRad(gimbalPitch);
+            frustumRef.current.rotateX(gimbalRad); // Rotate around the X-axis
+        }
+    });
 
     // If any required prop is null/undefined, return nothing
     if (!cameraDetails || !lensDetails || focusDistanceM === undefined || aperture === null) {
@@ -226,19 +240,18 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
         opacity: 0.25 + Math.sin(pulseFactor.current) * 0.15,
     };
 
-    // Common text style for all labels
-    const commonTextStyle = {
-        fontSize: '24px',
-        fontWeight: 'bold',
-        padding: '4px 12px',
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        borderRadius: '8px',
-        textShadow: '2px 2px 4px black',
-        whiteSpace: 'nowrap'
+    // Common text settings for all labels - remove the HTML styling properties
+    const textSettings = {
+        fontSize: 0.2,
+        color: 'white',
+        outlineWidth: 0.01,
+        outlineColor: '#000000',
+        anchorX: 'center' as const,
+        anchorY: 'middle' as const
     };
 
     return (
-        <group ref={frustumRef} position={[0, -0.41, 0]} rotation={[0, 0, 0]}>
+        <group ref={frustumRef} position={[0, 0, 0]} rotation={[0, 0, 0]}>
             {/* Frustum Volume */}
             <mesh geometry={geometry}>
                 <meshStandardMaterial
@@ -275,7 +288,7 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
             />
 
             {/* Near Focus Plane - with animated highlight */}
-            {visualization.showNearFocusPlane && nearFocusDistanceM > 0 && (
+            {visualization.showNearFocusPlane && nearFocusDistanceM > 0 && nearFocusWidth > 0 && nearFocusHeight > 0 && (
                 <>
                     <Plane
                         args={[nearFocusWidth, nearFocusHeight]}
@@ -292,24 +305,24 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
                     
                     {/* Near Focus Plane Label */}
                     {visualization.showFocusPlaneLabels && (
-                        <Html
+                        <Text
                             position={[-nearFocusWidth / 2 - 0.5, 0, -nearFocusDistanceM]}
-                            center
-                            sprite
+                            fontSize={0.2}
+                            color="#00ff00"
+                            anchorX="right"
+                            anchorY="middle"
+                            outlineWidth={0.01}
+                            outlineColor="#000000"
+                            rotation={[0, Math.PI / 2, 0]}
                         >
-                            <div style={{ 
-                                ...commonTextStyle,
-                                color: '#00ff00'
-                            }}>
-                                Near Focus: {metersToFeet(nearFocusDistanceM).toFixed(1)}ft
-                            </div>
-                        </Html>
+                            {`Near Focus: ${metersToFeet(nearFocusDistanceM).toFixed(1)}ft`}
+                        </Text>
                     )}
                 </>
             )}
 
             {/* Far Focus Plane - only show when explicitly enabled */}
-            {visualization.showFarFocusPlane && farFocusDistanceM > 0 && farFocusDistanceM !== Infinity && farFocusDistanceM <= focusDistanceM * 3 && (
+            {visualization.showFarFocusPlane && farFocusDistanceM > 0 && farFocusDistanceM !== Infinity && farFocusDistanceM <= focusDistanceM * 3 && farFocusWidth > 0 && farFocusHeight > 0 && (
                 <>
                     <Plane
                         args={[farFocusWidth, farFocusHeight]}
@@ -326,18 +339,18 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
                     
                     {/* Far Focus Plane Label */}
                     {visualization.showFocusPlaneLabels && (
-                        <Html
+                        <Text
                             position={[-farFocusWidth / 2 - 0.5, 0, -farFocusDistanceM]}
-                            center
-                            sprite
+                            fontSize={0.2}
+                            color="#00ff00"
+                            anchorX="right"
+                            anchorY="middle"
+                            outlineWidth={0.01}
+                            outlineColor="#000000"
+                            rotation={[0, Math.PI / 2, 0]}
                         >
-                            <div style={{ 
-                                ...commonTextStyle,
-                                color: '#00ff00'
-                            }}>
-                                Far Focus: {metersToFeet(farFocusDistanceM).toFixed(1)}ft
-                            </div>
-                        </Html>
+                            {`Far Focus: ${metersToFeet(farFocusDistanceM).toFixed(1)}ft`}
+                        </Text>
                     )}
                 </>
             )}
@@ -355,50 +368,47 @@ const CameraFrustum: React.FC<CameraFrustumProps> = ({
 
             {/* Focus Plane Information - shown conditionally */}
             {visualization.showFocusPlaneInfo && (
-                <Html
-                    position={[0, farHeight / 2 + 0.4, -focusDistanceM]}
-                    center
-                    sprite
+                <Text
+                    position={[0, farHeight / 2 + 0.5, -focusDistanceM]}
+                    fontSize={0.3}
+                    color="white"
+                    anchorX="center"
+                    anchorY="bottom"
+                    outlineWidth={0.01}
+                    outlineColor="#000000"
                 >
-                    <div style={{ 
-                        ...commonTextStyle,
-                        color: 'white'
-                    }}>
-                        Focus Distance: {metersToFeet(focusDistanceM).toFixed(1)}ft
-                    </div>
-                </Html>
+                    {`Focus Distance: ${metersToFeet(focusDistanceM).toFixed(1)}ft`}
+                </Text>
             )}
 
             {/* DOF Information Label - shown conditionally */}
             {visualization.showDOFInfo && (
-                <Html
-                    position={[0, farHeight / 2 + 0.9, -focusDistanceM]}
-                    center
-                    sprite
+                <Text
+                    position={[0, -farHeight / 2 - 0.5, -focusDistanceM]}
+                    fontSize={0.25}
+                    color="#00ff00"
+                    anchorX="center"
+                    anchorY="top"
+                    outlineWidth={0.01}
+                    outlineColor="#000000"
                 >
-                    <div style={{ 
-                        ...commonTextStyle,
-                        color: inFocusRange ? "#00ff00" : "#ff9800"
-                    }}>
-                        {dofInfoText}
-                    </div>
-                </Html>
+                    {dofInfoText}
+                </Text>
             )}
 
             {/* Footprint Information - shown conditionally */}
             {visualization.showFootprintInfo && (
-                <Html
-                    position={[0, -farHeight / 2 - 0.4, -focusDistanceM]}
-                    center
-                    sprite
+                <Text
+                    position={[0, farHeight / 2 + 0.5, -focusDistanceM]}
+                    fontSize={0.3}
+                    color="white"
+                    anchorX="center"
+                    anchorY="bottom"
+                    outlineWidth={0.01}
+                    outlineColor="#000000"
                 >
-                    <div style={{ 
-                        ...commonTextStyle,
-                        color: '#4fc3f7'
-                    }}>
-                        {footprintInfoText}
-                    </div>
-                </Html>
+                    {footprintInfoText}
+                </Text>
             )}
         </group>
     );

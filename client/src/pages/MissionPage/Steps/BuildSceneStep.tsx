@@ -35,10 +35,12 @@ import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DirectionsBoatIcon from '@mui/icons-material/DirectionsBoat';
 import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import { useMission } from '../../../context/MissionContext';
 import { generateUUID } from '../../../utils/coordinateUtils';
 import { SceneObject } from '../../../context/MissionContext';
 import { metersToFeet, feetToMeters } from '../../../utils/sensorCalculations';
+import { addShipToScene, addDockToScene } from '../../../utils/sceneHelpers';
 
 // Styled components for industrial UI
 const SectionTitle = styled(Typography)(({ theme }) => ({
@@ -166,25 +168,36 @@ const StyledToggleButtonGroup = styled(ToggleButtonGroup)(({ theme }) => ({
 interface PreConfiguredModel {
     id: string;
     name: string;
-    type: 'ship' | 'box' | 'model';
+    type: 'ship' | 'box' | 'model' | 'dock';
     width?: number;
     length?: number;
     height?: number;
     realWorldLength?: number; // Add real-world length in feet
     scale?: number;
     path?: string;
+    description: string;
 }
 
 const PRE_CONFIGURED_MODELS: PreConfiguredModel[] = [
     {
-        id: 'uss-gerald-ford',
-        name: 'USS Gerald R. Ford Aircraft Carrier',
+        id: 'uss_gerald_ford',
+        name: 'USS Gerald R. Ford (Aircraft Carrier)',
         type: 'ship',
-        // Real-world dimensions in feet, will be converted to meters when added
-        width: 256, // Real width in feet
-        length: 1106, // Real length in feet
-        height: 250, // Approximate height in feet including tower
-        realWorldLength: 1106, // Pass to model for accurate scaling
+        width: 256,
+        length: 1106,
+        height: 250,
+        realWorldLength: 1106, // In feet
+        description: 'USS Gerald R. Ford (CVN-78) is the lead ship of her class of aircraft carriers.'
+    },
+    {
+        id: 'cargo_dockyard',
+        name: 'Cargo Dockyard',
+        type: 'dock',
+        width: 150,
+        length: 500,
+        height: 50,
+        realWorldLength: 500, // In feet
+        description: 'A detailed cargo dockyard model with warehouses and loading facilities.'
     },
     // Add more pre-configured models as needed
 ];
@@ -470,38 +483,57 @@ const BuildSceneStep: React.FC = () => {
         }
         
         try {
-            // Convert dimensions from feet to meters for storage
-            // The actual model scale will be calculated by the ShipModel component
-            const widthMeters = selectedModel.width ? feetToMeters(selectedModel.width) : undefined;
-            const lengthMeters = selectedModel.length ? feetToMeters(selectedModel.length) : undefined;
-            const heightMeters = selectedModel.height ? feetToMeters(selectedModel.height) : undefined;
-            
-            const newObject: SceneObject = {
-                id: generateUUID(),
-                type: selectedModel.type,
-                class: 'asset',
-                position: { x: 0, y: 0, z: 0 },
-                rotation: { x: 0, y: 0, z: 0 },
-                width: widthMeters,
-                length: lengthMeters,
-                height: heightMeters,
-                // Add real-world length (in feet) for accurate scaling
-                realWorldLength: selectedModel.realWorldLength,
-                createdAt: new Date().toISOString(),
-                source: 'build-scene-ui'
-            };
-            
-            // Simulate loading delay for better UX
-            setTimeout(() => {
+            if (selectedModel.type === 'ship') {
+                // Use the ship helper function
+                addShipToScene(
+                    dispatch, 
+                    { x: 0, y: 0, z: 0 }, 
+                    { x: 0, y: 0, z: 0 },
+                    { x: 1, y: 1, z: 1 },
+                    selectedModel.realWorldLength
+                );
+            } else if (selectedModel.type === 'dock') {
+                // Use the dock helper function
+                addDockToScene(
+                    dispatch, 
+                    { x: 0, y: 0, z: 0 }, 
+                    { x: 0, y: 0, z: 0 },
+                    { x: 1, y: 1, z: 1 },
+                    selectedModel.realWorldLength
+                );
+            } else {
+                // Handle other model types here
+                // Convert dimensions from feet to meters for storage
+                const widthMeters = selectedModel.width ? feetToMeters(selectedModel.width) : undefined;
+                const lengthMeters = selectedModel.length ? feetToMeters(selectedModel.length) : undefined;
+                const heightMeters = selectedModel.height ? feetToMeters(selectedModel.height) : undefined;
+                
+                const newObject: SceneObject = {
+                    id: generateUUID(),
+                    type: selectedModel.type,
+                    class: 'asset',
+                    position: { x: 0, y: 0, z: 0 },
+                    rotation: { x: 0, y: 0, z: 0 },
+                    width: widthMeters,
+                    length: lengthMeters,
+                    height: heightMeters,
+                    // Add real-world length (in feet) for accurate scaling
+                    realWorldLength: selectedModel.realWorldLength,
+                    createdAt: new Date().toISOString(),
+                    source: 'build-scene-ui'
+                };
+                
                 dispatch({ type: 'ADD_SCENE_OBJECT', payload: newObject });
-                setSuccessMessage(`${selectedModel.name} added to scene!`);
-                setTimeout(() => setSuccessMessage(''), 3000);
-                setImportingModel(false);
-                setSelectedPreConfigModel('');
-            }, 1200);
+            }
+            
+            // Show success message
+            setSuccessMessage(`${selectedModel.name} added to scene!`);
+            setTimeout(() => setSuccessMessage(''), 3000);
+            setImportingModel(false);
+            setSelectedPreConfigModel('');
             
         } catch (error) {
-            console.error("Error dispatching ADD_SCENE_OBJECT for pre-configured model:", error);
+            console.error("Error adding pre-configured model:", error);
             setErrorMessage("Failed to add model to scene.");
             setImportingModel(false);
         }
@@ -897,6 +929,8 @@ const BuildSceneStep: React.FC = () => {
                                                         >
                                                             {obj.type === 'ship' ? 
                                                                 <DirectionsBoatIcon fontSize="small" /> : 
+                                                                obj.type === 'dock' ?
+                                                                <LocalShippingIcon fontSize="small" /> :
                                                                 <ViewInArIcon fontSize="small" />
                                                             }
                                                         </Avatar>
