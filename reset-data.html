@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Overwatch - Data Reset Utility</title>
+  <style>
+    body {
+      font-family: "Roboto", "Helvetica", "Arial", sans-serif; /* MUI default font stack */
+      max-width: 600px; /* Slightly narrower */
+      margin: 40px auto; /* More vertical margin */
+      padding: 20px;
+      background-color: #f4f6f8; /* Lighter background, common in MUI apps */
+      color: #212b36; /* MUI default text color */
+      line-height: 1.5;
+    }
+    .container {
+      background-color: #ffffff;
+      border-radius: 8px; /* Standard MUI border radius */
+      padding: 24px; /* MUI standard padding */
+      box-shadow: 0px 3px 3px -2px rgba(0,0,0,0.1), /* MUI Paper elevation */
+                  0px 3px 4px 0px rgba(0,0,0,0.08),
+                  0px 1px 8px 0px rgba(0,0,0,0.06);
+    }
+    h1 {
+      color: #1976d2; /* MUI primary blue */
+      font-size: 1.5rem; /* MUI H6 size */
+      font-weight: 500;
+      margin-bottom: 16px;
+    }
+    p {
+      margin-bottom: 24px;
+      color: #637381; /* MUI secondary text color */
+    }
+    .result {
+      margin: 24px 0;
+      padding: 16px;
+      border-radius: 4px;
+      background-color: #e3f2fd; /* Light blue background for info alert */
+      border-left: 5px solid #1976d2; /* Accent border */
+      color: #0d47a1; /* Darker blue text for contrast */
+    }
+    .result h3 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+    button {
+      background-color: #1976d2; /* MUI primary blue */
+      color: white;
+      border: none;
+      padding: 8px 22px; /* MUI button padding */
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9375rem; /* MUI button font size */
+      font-weight: 500;
+      text-transform: uppercase; /* MUI button text */
+      letter-spacing: 0.02857em;
+      transition: background-color 0.2s ease-in-out; /* Smooth hover */
+      box-shadow: 0px 1px 3px rgba(0,0,0,0.2); /* Subtle shadow */
+    }
+    button:hover {
+      background-color: #1565c0; /* Darker blue on hover */
+      box-shadow: 0px 2px 4px rgba(0,0,0,0.25);
+    }
+    .item {
+      margin: 8px 0;
+      font-family: "Consolas", "Monaco", "Courier New", monospace; /* Monospace for keys */
+      font-size: 0.875rem;
+      padding: 4px 8px;
+      background-color: #f5f5f5; /* Subtle background for items */
+      border-radius: 3px;
+    }
+    .result h4 {
+        margin-top: 0;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #1565c0;
+    }
+    .cleared {
+      color: #388e3c; /* MUI success green */
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Overwatch Data Reset Tool</h1>
+    <p>This tool will clear all stored data from your browser's localStorage and sessionStorage for the Overwatch application.</p>
+    
+    <button id="resetBtn">Reset All Data</button>
+    
+    <div id="result" class="result" style="display: none;">
+      <h3>Reset Results:</h3>
+      <div id="localStorageItems"></div>
+      <div id="sessionStorageItems"></div>
+      <p id="summary"></p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('resetBtn').addEventListener('click', function() {
+      const resultDiv = document.getElementById('result');
+      const localStorageDiv = document.getElementById('localStorageItems');
+      const sessionStorageDiv = document.getElementById('sessionStorageItems');
+      const summaryP = document.getElementById('summary');
+      
+      // Display the result area
+      resultDiv.style.display = 'block';
+      
+      // Check and display localStorage items before clearing
+      localStorageDiv.innerHTML = '<h4>Cleared from localStorage:</h4>';
+      let localCount = 0;
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        localStorageDiv.innerHTML += '<div class="item">' + key + '</div>';
+        localCount++;
+      }
+      
+      if (localCount === 0) {
+        localStorageDiv.innerHTML += '<div class="item">No items found</div>';
+      }
+      
+      // Check and display sessionStorage items before clearing
+      sessionStorageDiv.innerHTML = '<h4>Cleared from sessionStorage:</h4>';
+      let sessionCount = 0;
+      
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        sessionStorageDiv.innerHTML += '<div class="item">' + key + '</div>';
+        sessionCount++;
+      }
+      
+      if (sessionCount === 0) {
+        sessionStorageDiv.innerHTML += '<div class="item">No items found</div>';
+      }
+      
+      // Clear all storage
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Display summary
+      summaryP.innerHTML = '<span class="cleared">✓ All data has been cleared. You can now safely create a new repository without any previous account data.</span>';
+    });
+  </script>
+</body>
+</html>
+  

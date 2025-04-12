@@ -1,34 +1,42 @@
-# Overwatch - Advanced Drone Mission Planning Platform
+# Overwatch - Advanced Drone Mission Planning, Simulation, & Ground Control Platform
 
-Overwatch is a comprehensive drone mission planning platform built with React and Three.js. The application allows for sophisticated 3D scene creation, hardware selection, and mission planning for drone operations.
+Overwatch is a comprehensive, enterprise-grade platform for drone operations, built with React, Three.js, and Cesium. It provides sophisticated tools for 3D mission planning, realistic simulation, and real-time ground control.
 
-## Features
+## Core Capabilities
 
-### 3D Scene Builder
-- **Create 3D Objects**: Add boxes and other 3D objects with customizable dimensions, colors, and positions
-- **Import 3D Models**: Support for GLB, GLTF, and other 3D model formats
-- **Interactive Terrain**: Real-time interactive environment that displays GCPs and mission waypoints
-- **Interactive Objects**: Edit object properties (position, color, etc.) via double-click. Resize box objects by holding Shift + Double-click and dragging the handles. Drag GCPs by holding Shift + Double-click.
-- **Polygon Drawing**: Draw and create polygon areas in the 3D scene
-- **Scene Export**: Export your scene as GLB, GLTF, or GeoJSON
+### 1. 3D Mission Planning
+- **Geographic Context**: Plan missions directly on a high-fidelity Cesium globe (`GeoPage`) or in a localized 3D environment.
+- **Takeoff-Centric Workflow**: Utilize precisely surveyed drone takeoff locations as the intuitive origin (0,0,0) for field operations, simplifying navigation and communication ([Takeoff Origin Guide](FrontEnd/docs/takeoff-origin-guide.md)).
+- **Coordinate Systems**: Robust handling of multiple coordinate systems (Global WGS84, Local ENU, Three.js Scene) with clear transformation logic ([Coordinate Systems Guide](FrontEnd/docs/coordinate-systems.md)).
+- **Precise Initialization**: Start missions by setting a specific geographic point, automatically initializing takeoff and Ground Control Point (GCP) locations ([Mission Planning Workflow](FrontEnd/docs/MissionPlanningWorkflow.md), [User Guide](FrontEnd/docs/UserGuide-MissionPlanning.md)).
+- **Waypoint & Path Creation**: Define complex flight paths with various segment types.
+- **GCP Management**: Add, visualize, and interactively adjust Ground Control Points.
+- **3D Scene Builder**:
+    - Add geometric shapes (boxes, etc.) with customizable properties.
+    - Import diverse 3D model formats (GLB, GLTF) and geospatial data (GeoJSON, KML).
+    - Draw and define polygon areas within the 3D scene.
+    - Export scenes for external use.
+- **Hardware Configuration**:
+    - Select and configure camera and lens models.
+    - Real-time calculation and visualization of sensor parameters (FOV, GSD, DOF).
 
-### Drone Visualization
-- **Detailed Drone Model**: Real-time 3D visualization of drone position and orientation
-- **Camera Frustum**: Visual representation of the drone's camera field of view
-- **Position Control**: Manual positioning controls for precise placement
-- **Flight Simulation**: Simulate flight paths with realistic drone movement
+### 2. Mission Simulation
+- **Realistic Flight Dynamics**: Simulate planned flight paths with accurate drone movement.
+- **Sensor Preview**: Visualize the drone's camera frustum and sensor footprint during simulation.
+- **Environment Interaction**: Preview how the drone interacts with the terrain and imported 3D models.
+- **Pre-flight Validation**: Verify mission coverage, obstacle clearance, and timing before actual deployment.
 
-### Mission Planning
-- **Waypoint Creation**: Set precise waypoints for flight paths
-- **GCP Management**: Add and visualize Ground Control Points
-- **Path Segments**: Create and edit flight path segments with different types (linear, Bezier curves)
-- **Real-time Feedback**: Immediate visual feedback of all mission elements
+### 3. Ground Control (Integration Ready)
+- **Real-time Drone Visualization**: Display live drone position and orientation within the 3D environment.
+- **Telemetry Monitoring**: Designed for integration with telemetry data streams (e.g., via ROS).
+- **ROS Integration**: Includes guidance for connecting to ROS-enabled drones, handling coordinate frame transformations (including NED), and managing sensor data ([ROS Coordinates Guide](FrontEnd/docs/ros-coordinates.md)).
+- **Command Interface (Planned)**: Architecture supports sending commands (e.g., waypoints, RTL) to the drone during live operations.
 
-### Hardware Selection
-- **Camera Configuration**: Select and configure different camera models
-- **Lens Options**: Various lens options with focal length and aperture settings
-- **Sensor Calculations**: Real-time calculations for field of view, ground resolution, and depth of field
-- **Live Preview**: See how hardware changes affect your mission planning
+## Key Features
+- **Interactive 3D Environment**: Leverages Three.js and React Three Fiber for a dynamic and responsive user experience.
+- **High-Fidelity Globe**: Utilizes Cesium for accurate global terrain and imagery display.
+- **Performance Optimizations**: Employs lazy loading, code splitting, GPU detection, and a dynamic Level of Detail (LOD) system for smooth performance across various hardware.
+- **Interactive Objects**: Edit object properties (position, color, size) via intuitive interactions (double-click, Shift+double-click drag).
 
 ## Getting Started
 
@@ -47,7 +55,7 @@ cd Overwatch
 2. Install dependencies:
 ```bash
 # Client dependencies
-cd client
+cd FrontEnd
 npm install
 
 # Server dependencies (if needed)
@@ -58,7 +66,7 @@ npm install
 3. Start the development server:
 ```bash
 # Start client (optimized fast startup)
-cd client
+cd FrontEnd
 npm run dev
 
 # Or use the full startup if Cesium assets need updating
@@ -67,81 +75,66 @@ npm run dev:full
 
 ### Startup Options
 
-- **Fast Startup (Recommended)**: `npm run dev` - Uses cached Cesium assets for faster startup (10 seconds+)
-- **Full Startup**: `npm run dev:full` - Verifies and updates Cesium assets if needed (slower startup)
-
-### Performance Optimizations
-
-Overwatch includes several optimizations to improve startup time and runtime performance:
-
-1. **Lazy Loading & Code Splitting**
-   - Components load only when needed
-   - ThreeJS and heavy libraries are split into smaller chunks
-
-2. **Three.js Performance Optimizations**
-   - Deferred rendering with adaptive frame rates
-   - Instanced meshes for repeated objects
-   - Geometry batching to reduce draw calls
-   - Texture optimization and caching
-   - Level of Detail (LOD) management
-
-3. **Build Optimizations**
-   - Advanced bundler configuration for optimal loading
-   - Conditional asset loading
-   - Smart caching of static assets
-
-These optimizations ensure the application performs well on a variety of hardware, from high-end workstations to more modest systems.
+- **Fast Startup (Recommended)**: `npm run dev` - Uses cached Cesium assets for faster startup (10 seconds+).
+- **Full Startup**: `npm run dev:full` - Verifies and updates Cesium assets if needed (slower startup).
 
 ## Usage Guide
 
+Refer to the specific user guides and technical documentation for detailed workflows:
+
+- **Initial Mission Setup**: [User Guide - Mission Planning](FrontEnd/docs/UserGuide-MissionPlanning.md)
+- **Technical Workflow**: [Mission Planning Workflow](FrontEnd/docs/MissionPlanningWorkflow.md)
+- **Using Takeoff Points**: [Takeoff-Centric Coordinate System Guide](FrontEnd/docs/takeoff-origin-guide.md)
+
 ### Building a 3D Scene
-1. Navigate to the "Build Scene" tab in the mission planning workflow
-2. Use the "Objects" tab to add boxes or other objects:
-   - Enter dimensions (width, height, length)
-   - Choose a color
-   - Click "Add Object" to place in the scene
-3. Objects will appear in the 3D view and can be managed in the list below
-4. Import 3D models using the "Import" tab:
-   - Supported formats: GLB, GLTF, GeoJSON, KML
-   - Upload files via the file selector
-5. Export your scene using the "Export" tab if needed
+1. Navigate to the "Build Scene" tab.
+2. Use the "Objects" tab to add primitives or the "Import" tab for models/data.
+3. Interact with objects in the 3D view (double-click to edit, Shift+double-click to resize/move GCPs).
 
 ### Positioning the Drone
-1. Double-click on the drone model in the 3D view to open positioning controls
-2. Use the coordinate inputs to precisely position the drone
-3. Enable "Camera Follow" to keep the view centered on the drone
-4. Adjust camera settings (focal length, aperture) to see how they affect the field of view
-
-### Interacting with the 3D Scene
-- **Edit Object Properties**: Double-click a scene object (e.g., a Box) or a GCP marker in the 3D view to open its edit modal.
-- **Resize Box Objects**: Hold **Shift** while double-clicking a box object to activate resize handles. Drag the handles to resize, then press **Escape** to confirm the new dimensions.
-- **Move GCPs**: Hold **Shift** while double-clicking a GCP marker to enter drag mode. Move the mouse to the desired location on the ground plane, then press **Escape** to set the new position.
+1. Double-click the drone model to open positioning controls.
+2. Precisely position the drone using coordinates.
+3. Configure camera/sensor settings.
 
 ### Creating Flight Paths
-1. Switch to the "Flight" tab in the workflow
-2. Add waypoints by clicking on the terrain
-3. Connect waypoints to create flight paths
-4. Adjust waypoint properties as needed
-5. Simulate the flight to preview the mission
+1. Switch to the "Flight" tab.
+2. Add and connect waypoints on the terrain or 3D objects.
+3. Configure waypoint properties and path segments.
+
+### Simulating the Mission
+1. Click the "Simulate" button.
+2. Observe the drone's flight path and sensor coverage.
+3. Adjust the plan as needed.
 
 ## Project Structure
 
-- `client/` - React frontend application
-  - `src/components/` - React components
-  - `src/context/` - Context providers and state management
-  - `src/utils/` - Utility functions including sensor calculations
-  - `src/pages/` - Main application pages
-  - `src/layouts/` - Layout components
-- `server/` - Backend server (if applicable)
+- `FrontEnd/` - React frontend application
+  - `src/` - Source code
+  - `docs/` - Technical documentation and user guides
+- `BackEnd/` - Backend server
 
 ## Technologies Used
 
-- React.js - Frontend framework
-- Three.js - 3D visualization
-- React Three Fiber - React bindings for Three.js
-- Material UI - UI component library
-- TypeScript - Type-safe JavaScript
-- Socket.IO - Real-time communication
+- React.js, TypeScript
+- Three.js, React Three Fiber, Drei
+- CesiumJS
+- Material UI
+- Zustand (or relevant state management)
+- Vite (or relevant bundler)
+- Socket.IO (for real-time communication)
+- ROS (via rosbridge_suite for integration)
+
+## Documentation Deep Dive
+
+For more detailed information, explore the documentation directory (`FrontEnd/docs/`):
+
+- [Coordinate Systems Guide](FrontEnd/docs/coordinate-systems.md)
+- [Mission Planning Workflow](FrontEnd/docs/MissionPlanningWorkflow.md)
+- [ROS Coordinate Systems and Integration](FrontEnd/docs/ros-coordinates.md)
+- [Takeoff-Centric Coordinate System Guide](FrontEnd/docs/takeoff-origin-guide.md)
+- [User Guide - Mission Planning](FrontEnd/docs/UserGuide-MissionPlanning.md)
+- *Coming Soon: Ground Control Workflow*
+- *Coming Soon: Simulation Workflow*
 
 ## License
 
@@ -204,4 +197,97 @@ For best performance, prepare three versions of each 3D model:
 
 ## Performance Impact
 
-The LOD system can improve frame rates by 200-300% in scenes with multiple complex 3D models. 
+The LOD system can improve frame rates by 200-300% in scenes with multiple complex 3D models.
+
+## Documentation
+
+For more detailed information about specific workflows and features, please refer to these documentation files:
+
+- [Mission Planning Workflow](FrontEnd/docs/MissionPlanningWorkflow.md) - Technical overview of the mission planning workflow
+- [Mission Planning User Guide](FrontEnd/docs/UserGuide-MissionPlanning.md) - Step-by-step guide for users
+
+These guides provide detailed information about how to use the geographic point selection feature to create missions with properly positioned drones and GCPs.
+
+# Simulation Workflow Guide
+
+## Overview
+
+This document details the simulation workflow within the Overwatch platform. Simulation allows users to preview and validate drone missions in the 3D environment before actual flight, ensuring safety, efficiency, and desired outcomes.
+
+## Purpose of Simulation
+
+- **Validate Flight Paths**: Ensure waypoints and paths are correctly defined and achievable.
+- **Check Sensor Coverage**: Preview the area captured by the drone\'s sensors (e.g., camera) along the path.
+- **Identify Obstacle Conflicts**: Detect potential collisions with terrain or imported 3D models.
+- **Estimate Mission Time**: Get an approximation of the flight duration.
+- **Review Camera Angles**: Check camera orientation and field of view at key points.
+- **Train Operators**: Familiarize users with mission execution in a safe environment.
+
+## Initiating a Simulation
+
+1.  **Complete Mission Plan**: Ensure you have defined:
+    *   A takeoff point.
+    *   At least one flight path with waypoints.
+    *   Configured drone hardware (camera, sensors).
+    *   Imported any relevant 3D models or terrain data.
+2.  **Navigate to Simulation Controls**: Locate the simulation controls, typically within the main mission planning interface or a dedicated \"Simulate\" tab/panel.
+3.  **Click \"Simulate\"**: Press the primary simulation button (e.g., \"Simulate Mission\", \"Run Simulation\").
+
+## Simulation Process
+
+1.  **Initialization**: The drone model is placed at the defined takeoff point (local 0,0,0 if using the takeoff-centric system).
+2.  **Path Execution**: The drone model begins moving along the first defined flight path, following the waypoints in sequence.
+    *   Movement speed may be based on configured drone parameters or a default simulation speed.
+    *   Altitude changes and turns are executed according to the path definition.
+3.  **Sensor Visualization**: The drone\'s camera frustum (or other sensor footprints) is visualized in real-time, showing the ground coverage.
+4.  **Environment Interaction**: The simulation renders the drone\'s movement relative to the 3D terrain and any imported models.
+5.  **Completion**: The simulation concludes when the drone reaches the end of the last defined flight path, or potentially executes a simulated landing or return-to-launch (RTL) maneuver if configured.
+
+## Simulation Controls
+
+During the simulation, users typically have access to controls such as:
+
+- **Play/Pause**: Start, temporarily stop, and resume the simulation.
+- **Stop/Reset**: End the simulation and return the drone to the takeoff position.
+- **Speed Control**: Adjust the playback speed (e.g., 1x, 2x, 0.5x) for faster review or slower analysis.
+- **Timeline Scrubber**: (Optional) Drag a slider to jump to specific points in the mission timeline.
+- **Camera Views**: Switch between different camera perspectives:
+    *   **Follow Cam**: Camera tracks the drone\'s movement.
+    *   **Pilot View**: See the scene from the drone\'s perspective (simulated FPV).
+    *   **Free Camera**: Manually navigate the scene while the simulation runs.
+
+## Reviewing Simulation Results
+
+After or during the simulation, focus on:
+
+- **Path Accuracy**: Does the drone follow the intended path smoothly?
+- **Altitude Profile**: Are altitude changes correct and safe relative to terrain/obstacles?
+- **Sensor Coverage**: Is the target area adequately covered by the sensor footprint?
+- **Obstacle Clearance**: Does the drone maintain safe distances from all obstacles?
+- **Camera Views**: Are the camera angles appropriate for the mission objectives (e.g., inspection, mapping)?
+- **Timing**: Does the estimated duration fit operational constraints?
+
+## Refining the Mission Plan
+
+Based on simulation results, return to the mission planning steps (\"Build Scene\", \"Flight\" tabs) to:
+
+- Adjust waypoint positions or altitudes.
+- Modify flight path segments or speeds.
+- Reconfigure sensor settings (e.g., gimbal angle, camera parameters).
+- Add or remove waypoints.
+- Change the takeoff location.
+
+Re-run the simulation after making adjustments until the desired outcome is achieved.
+
+## Technical Considerations
+
+- **Simulation Fidelity**: The simulation uses simplified physics for performance. It\'s a representation, not a perfect physics replication (unless integrated with a high-fidelity physics engine).
+- **Performance**: Complex scenes or very long flight paths might impact simulation smoothness. The LOD system helps mitigate this.
+- **Data Source**: Simulation relies on the accuracy of the input data (terrain models, obstacle models, drone parameters).
+
+## Best Practices
+
+- **Simulate Frequently**: Run simulations after significant changes to the mission plan.
+- **Check Edge Cases**: Pay attention to takeoff, landing, sharp turns, and flight near obstacles.
+- **Use Realistic Parameters**: Configure drone speed and camera settings close to real-world values.
+- **Involve Stakeholders**: Use simulation recordings or live views to communicate the plan to the team or clients. 

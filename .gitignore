@@ -9,7 +9,7 @@ node_modules/
 /reference/
 
 # Large files
-client/public/Assets/Drone\ models/Alta\ X\ Shell\ Model.stp
+FrontEnd/public/Assets/Drone\ models/Alta\ X\ Shell\ Model.stp
 
 # Build outputs
 /dist/
@@ -51,5 +51,11 @@ logs/
 Thumbs.db
 
 # Ignore old RasterPatternStep that has been renamed to MissionPlanningStep
-client/src/pages/MissionPage/Steps/RasterPatternStep.tsx
-client/src/pages/MissionPage/RasterPatternStep.tsx 
+FrontEnd/src/pages/MissionPage/Steps/RasterPatternStep.tsx
+FrontEnd/src/pages/MissionPage/RasterPatternStep.tsx
+
+# Client specific ignores
+node_modules
+dist
+.parcel-cache
+.eslintcache 

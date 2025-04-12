@@ -3,7 +3,7 @@
 ### MUI Grid v1 API Usage (Requires Attention)
 
 **Issue:**
-Across the application, particularly noticed in `client/src/pages/MissionPage/Steps/BuildSceneStep.tsx` (now fixed) and `client/src/pages/MissionPage/Steps/PreChecksStep.tsx` (needs fixing), the Material UI `Grid` component was being used with syntax from the older Grid v1 API (common in MUI v4 and earlier). While MUI v5+ (including v7, which is used in this project) offers backward compatibility, using the old API generates console warnings and can lead to confusing TypeScript errors (like properties seemingly not existing).
+Across the application, particularly noticed in `FrontEnd/src/pages/MissionPage/Steps/BuildSceneStep.tsx` (now fixed) and `FrontEnd/src/pages/MissionPage/Steps/PreChecksStep.tsx` (needs fixing), the Material UI `Grid` component was being used with syntax from the older Grid v1 API (common in MUI v4 and earlier). While MUI v5+ (including v7, which is used in this project) offers backward compatibility, using the old API generates console warnings and can lead to confusing TypeScript errors (like properties seemingly not existing).
 
 **Symptoms:**
 1.  **Console Warnings:** You will see warnings like:
@@ -45,8 +45,8 @@ The standard and correct way to use the Grid component in MUI v5+ is:
 ```
 
 **Status:**
-*   `client/src/pages/MissionPage/Steps/BuildSceneStep.tsx`: **Fixed** (Refactored to use Flexbox, which also resolved the Grid issues).
-*   `client/src/pages/MissionPage/Steps/PreChecksStep.tsx`: **Needs Fix** (Exhibits the console warnings). Apply the fix described above to the `Grid` components within this file or its children.
+*   `FrontEnd/src/pages/MissionPage/Steps/BuildSceneStep.tsx`: **Fixed** (Refactored to use Flexbox, which also resolved the Grid issues).
+*   `FrontEnd/src/pages/MissionPage/Steps/PreChecksStep.tsx`: **Needs Fix** (Exhibits the console warnings). Apply the fix described above to the `Grid` components within this file or its children.
 
 **Importance:**
 Consistently using the correct Grid v2 API syntax is important for:
