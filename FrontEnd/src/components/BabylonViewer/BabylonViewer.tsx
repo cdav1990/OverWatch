@@ -10,7 +10,17 @@ import {
     PointerEventTypes,
     NoiseProceduralTexture,
     HemisphericLight, 
-    DirectionalLight
+    DirectionalLight,
+    HDRCubeTexture,
+    ImageProcessingConfiguration,
+    GlowLayer,
+    SSAORenderingPipeline,
+    DefaultRenderingPipeline,
+    CascadedShadowGenerator,
+    SSRRenderingPipeline,
+    IblShadowsRenderPipeline,
+    LinesMesh,
+    VertexData
 } from '@babylonjs/core';
 import { WaterMaterial } from "@babylonjs/materials";
 import '@babylonjs/loaders/glTF'; // Import GLTF loader
@@ -22,9 +32,12 @@ import { Waypoint, LocalCoord } from '../../types/mission';
 // Import hardware types if needed for camera params
 import { Camera, Lens } from '../../types/hardware';
 import { SceneSettings } from './types/SceneSettings'; // Import SceneSettings type
-import ViewerSettingsOverlay from './ViewerSettingsOverlay'; // Import the overlay component
 import DronePositionControlPanel from '../DronePositionControlPanel/DronePositionControlPanelWithDOF'; // Import the control panel
 import SettingsIcon from '@mui/icons-material/Settings'; // Gear Icon
+import { DOFVisualizer } from './DOFVisualizer';
+import ViewerSettingsOverlayFixed from './ViewerSettingsOverlayFixed'; // Import the fixed version
+import { useAppDispatch, useAppSelector } from '../../state/hooks';
+import { patchSceneSettings } from '../../state/slices/sceneSlice';
 
 // Simple styles object (MOVED TO TOP)
 const styles = {
@@ -110,11 +123,18 @@ type ExtendedWaterMaterial = WaterMaterial & {
     enableAnimation?: () => void;
 };
 
+// Define a type for reflection probe
+interface ReflectionProbe {
+    dispose(): void;
+}
+
 const BabylonViewer: React.FC = () => {
     const reactCanvas = useRef<Nullable<HTMLCanvasElement>>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const { state: missionState, dispatch } = useMission(); // Get dispatch
+    const { state: missionState, dispatch: missionDispatch } = useMission(); // Get dispatch from mission context
+    const reduxDispatch = useAppDispatch(); // Get Redux dispatch
+    const settings = useAppSelector((s: any) => s.scene.settings); // Type assertion to avoid unknown type error
     const [modelLoading, setModelLoading] = useState(false); // State for model loading
     const sceneRef = useRef<Scene | null>(null); // Ref to store the scene object
     const shadowGeneratorRef = useRef<ShadowGenerator | null>(null); // Ref for shadow generator
@@ -125,6 +145,13 @@ const BabylonViewer: React.FC = () => {
     const skyboxMeshRef = useRef<Mesh | null>(null); // Ref for skybox
     const waterMeshRef = useRef<Mesh | null>(null); // Ref for water plane
     const waterMaterialRef = useRef<WaterMaterial | null>(null); // Ref for water material
+    const hdrTextureRef = useRef<HDRCubeTexture | null>(null);
+    const renderingPipelineRef = useRef<DefaultRenderingPipeline | null>(null);
+    const ssaoRef = useRef<SSAORenderingPipeline | null>(null);
+    const reflectionProbeRef = useRef<ReflectionProbe | null>(null);
+    const glowLayerRef = useRef<GlowLayer | null>(null);
+    const ssrPipelineRef = useRef<SSRRenderingPipeline | null>(null);
+    const iblShadowsPipelineRef = useRef<IblShadowsRenderPipeline | null>(null);
 
     // State for settings overlay visibility
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -138,7 +165,7 @@ const BabylonViewer: React.FC = () => {
     const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
     const [isRecording, setIsRecording] = useState(false);
     const [isCameraViewportVisible, setIsCameraViewportVisible] = useState(false);
-    const [dofVisualizer, setDofVisualizer] = useState<any>(null);
+    const [dofVisualizer, setDofVisualizer] = useState<DOFVisualizer | null>(null);
     // DOF visualization state
     const [showNearFocusPlane, setShowNearFocusPlane] = useState(true);
     const [showFarFocusPlane, setShowFarFocusPlane] = useState(false);
@@ -146,6 +173,14 @@ const BabylonViewer: React.FC = () => {
     const [showDOFLabels, setShowDOFLabels] = useState(true);
     // We'll get this from lens in hardware
     const [availableFStops, setAvailableFStops] = useState<number[]>([1.4, 2, 2.8, 4, 5.6, 8, 11, 16]);
+
+    // Add new refs for frustum meshes after the existing refs
+    const frustumLinesRef = useRef<Nullable<LinesMesh>>(null);
+    const focusPlaneRef = useRef<Nullable<Mesh>>(null);
+    const nearPlaneRef = useRef<Nullable<Mesh>>(null);
+    const farPlaneRef = useRef<Nullable<Mesh>>(null);
+    const lineMaterialRef = useRef<Nullable<StandardMaterial>>(null);
+    const focusPlaneMaterialRef = useRef<Nullable<StandardMaterial>>(null);
 
     // --- Function to load drone model (using useCallback) ---
     const loadDroneModel = useCallback(async () => {
@@ -218,8 +253,8 @@ const BabylonViewer: React.FC = () => {
 
     // --- Function to handle scene setting changes ---
     const handleSceneSettingChange = useCallback(<K extends keyof SceneSettings>(setting: K, value: SceneSettings[K]) => {
-        dispatch({ type: 'UPDATE_SCENE_SETTINGS', payload: { [setting]: value } });
-    }, [dispatch]);
+        reduxDispatch(patchSceneSettings({ [setting]: value }));
+    }, [reduxDispatch]);
 
     // --- New function to handle drone double-click ---
     const setupDroneInteraction = useCallback(() => {
@@ -283,13 +318,13 @@ const BabylonViewer: React.FC = () => {
             
             // Update mission context if needed - use SET_TAKEOFF_POINT for drone position
             if (missionState.currentMission) {
-                dispatch({ 
+                missionDispatch({ 
                     type: 'SET_TAKEOFF_POINT', 
                     payload: newPosition 
                 });
             }
         }
-    }, [dispatch, missionState.currentMission]);
+    }, [missionDispatch, missionState.currentMission]);
 
     // Handler for heading change from control panel
     const handleHeadingChange = useCallback((newHeading: number) => {
@@ -301,12 +336,12 @@ const BabylonViewer: React.FC = () => {
             droneGroupRef.current.rotation = new Vector3(0, headingRad, 0);
             
             // Update mission context with the gimbal pitch value
-            dispatch({ 
+            missionDispatch({ 
                 type: 'UPDATE_HARDWARE_FIELD', 
                 payload: { field: 'gimbalPitch', value: newHeading }
             });
         }
-    }, [dispatch]);
+    }, [missionDispatch]);
 
     // Handler for camera follow change from control panel
     const handleCameraFollowChange = useCallback((follows: boolean) => {
@@ -323,11 +358,11 @@ const BabylonViewer: React.FC = () => {
             frustumNodeRef.current.rotation = new Vector3(gimbalRad, Math.PI, 0);
         }
         
-        dispatch({ 
+        missionDispatch({ 
             type: 'UPDATE_HARDWARE_FIELD', 
             payload: { field: 'gimbalPitch', value: pitch }
         });
-    }, [dispatch]);
+    }, [missionDispatch]);
 
     // Handler for camera mode change from control panel
     const handleCameraModeChange = useCallback((mode: 'photo' | 'video') => {
@@ -388,22 +423,218 @@ const BabylonViewer: React.FC = () => {
     // Handler for aperture change
     const handleApertureChange = useCallback((aperture: number) => {
         if (missionState.hardware) {
-            dispatch({ 
+            missionDispatch({ 
                 type: 'UPDATE_HARDWARE_FIELD', 
                 payload: { field: 'fStop', value: aperture }
             });
         }
-    }, [dispatch, missionState.hardware]);
+    }, [missionDispatch, missionState.hardware]);
 
     // Handler for focus distance change
     const handleFocusDistanceChange = useCallback((distance: number) => {
         if (missionState.hardware) {
-            dispatch({ 
+            missionDispatch({ 
                 type: 'UPDATE_HARDWARE_FIELD', 
                 payload: { field: 'focusDistance', value: distance }
             });
         }
-    }, [dispatch, missionState.hardware]);
+    }, [missionDispatch, missionState.hardware]);
+
+    // Add this updateFrustumGeometry function before the Effect for Scene Setup
+    const updateFrustumGeometry = useCallback(() => {
+        // Skip if scene, frustum node, or required refs are not available
+        const scene = sceneRef.current;
+        const frustumNode = frustumNodeRef.current;
+        if (!scene || !frustumNode) return;
+
+        // --- Calculate Frustum Geometry ---
+        const cameraDetails = missionState.hardware?.cameraDetails;
+        const lensDetails = missionState.hardware?.lensDetails;
+        const focusDistanceM = missionState.hardware?.focusDistance ?? 10;
+        const nearDist = 0.1; 
+        const farDist = Math.max(focusDistanceM * 1.5, 20); 
+        const focusPlaneGeom = calculateFrustumDimensions(cameraDetails, lensDetails, focusDistanceM);
+        const nearPlaneGeom = calculateFrustumDimensions(cameraDetails, lensDetails, nearDist);
+        const farPlaneGeom = calculateFrustumDimensions(cameraDetails, lensDetails, farDist);
+
+        if (focusPlaneGeom && nearPlaneGeom && farPlaneGeom) {
+            // Create materials if they don't exist
+            if (!lineMaterialRef.current) {
+                const lineColor = new Color3(0.2, 0.8, 1.0); // Cyan
+                const lineMaterial = new StandardMaterial("frustumLineMat", scene);
+                lineMaterial.diffuseColor = lineColor;
+                lineMaterial.emissiveColor = lineColor; 
+                lineMaterial.alpha = 0.6; 
+                lineMaterial.disableLighting = true; 
+                lineMaterial.freeze();
+                lineMaterialRef.current = lineMaterial;
+            }
+
+            if (!focusPlaneMaterialRef.current) {
+                const focusPlaneColor = new Color3(0.1, 0.8, 0.1); // Green
+                const focusPlaneMaterial = new StandardMaterial("focusPlaneMat", scene);
+                focusPlaneMaterial.diffuseColor = focusPlaneColor;
+                focusPlaneMaterial.alpha = 0.4; 
+                focusPlaneMaterial.backFaceCulling = false; 
+                focusPlaneMaterial.freeze();
+                focusPlaneMaterialRef.current = focusPlaneMaterial;
+            }
+
+            // --- Calculate Corner Points ---
+            const nearTL = new Vector3(-nearPlaneGeom.width / 2, nearPlaneGeom.height / 2, nearDist);
+            const nearTR = new Vector3(nearPlaneGeom.width / 2, nearPlaneGeom.height / 2, nearDist);
+            const nearBL = new Vector3(-nearPlaneGeom.width / 2, -nearPlaneGeom.height / 2, nearDist);
+            const nearBR = new Vector3(nearPlaneGeom.width / 2, -nearPlaneGeom.height / 2, nearDist);
+            const farTL = new Vector3(-farPlaneGeom.width / 2, farPlaneGeom.height / 2, farDist);
+            const farTR = new Vector3(farPlaneGeom.width / 2, farPlaneGeom.height / 2, farDist);
+            const farBL = new Vector3(-farPlaneGeom.width / 2, -farPlaneGeom.height / 2, farDist);
+            const farBR = new Vector3(farPlaneGeom.width / 2, -farPlaneGeom.height / 2, farDist);
+
+            // Define the lines
+            const lines = [
+                [nearTL, farTL], [nearTR, farTR], [nearBL, farBL], [nearBR, farBR], // Edges
+                [nearTL, nearTR], [nearTR, nearBR], [nearBR, nearBL], [nearBL, nearTL], // Near plane rect
+                [farTL, farTR], [farTR, farBR], [farBR, farBL], [farBL, farTL] // Far plane rect
+            ];
+
+            // Create or update the line system
+            if (!frustumLinesRef.current) {
+                // Create new line system
+                const lineSystem = MeshBuilder.CreateLineSystem(
+                    "frustumLines", 
+                    { lines: lines, updatable: true }, 
+                    scene
+                );
+                lineSystem.material = lineMaterialRef.current;
+                lineSystem.parent = frustumNode;
+                frustumLinesRef.current = lineSystem;
+            } else {
+                // Update existing line system
+                const positions: number[] = [];
+                const indices: number[] = [];
+                
+                // Fill positions and indices arrays from lines
+                let index = 0;
+                lines.forEach(line => {
+                    positions.push(
+                        line[0].x, line[0].y, line[0].z,
+                        line[1].x, line[1].y, line[1].z
+                    );
+                    indices.push(index, index + 1);
+                    index += 2;
+                });
+                
+                // Create vertex data and apply to mesh
+                const vertexData = new VertexData();
+                vertexData.positions = positions;
+                vertexData.indices = indices;
+                vertexData.applyToMesh(frustumLinesRef.current as Mesh, true);
+            }
+
+            // Create or update focus plane
+            if (!focusPlaneRef.current) {
+                // Create new focus plane
+                const focusPlane = MeshBuilder.CreatePlane(
+                    "focusPlane", 
+                    { width: 1, height: 1, updatable: true }, 
+                    scene
+                );
+                focusPlane.material = focusPlaneMaterialRef.current;
+                focusPlane.parent = frustumNode;
+                focusPlaneRef.current = focusPlane;
+            }
+            
+            // Update focus plane dimensions and position
+            if (focusPlaneRef.current) {
+                focusPlaneRef.current.scaling.x = focusPlaneGeom.width;
+                focusPlaneRef.current.scaling.y = focusPlaneGeom.height;
+                focusPlaneRef.current.position.z = focusDistanceM;
+            }
+        }
+    }, [missionState.hardware]);
+
+    // Move setupToneMapping to component level
+    const setupToneMapping = useCallback(() => {
+        if (!sceneRef.current) return;
+
+        const scene = sceneRef.current;
+        const camera = scene.activeCamera;
+        const qualityLevel = settings?.qualityLevel || 'medium';
+
+        // Dispose existing pipelines
+        if (renderingPipelineRef.current) {
+            (renderingPipelineRef.current as DefaultRenderingPipeline).dispose();
+            renderingPipelineRef.current = null;
+        }
+
+        if (ssrPipelineRef.current) {
+            (ssrPipelineRef.current as SSRRenderingPipeline).dispose();
+            ssrPipelineRef.current = null;
+        }
+
+        if (iblShadowsPipelineRef.current) {
+            (iblShadowsPipelineRef.current as IblShadowsRenderPipeline).dispose();
+            iblShadowsPipelineRef.current = null;
+        }
+
+        // Create the default pipeline with tone mapping - adjusted based on quality
+        if (qualityLevel === 'low' || qualityLevel === 'minimal') {
+            // No post-processing for lower quality levels
+            return;
+        } else {
+            // Medium to Ultra Quality
+            const pipeline = new DefaultRenderingPipeline("default", true, scene, camera ? [camera] : undefined);
+            
+            // Tone mapping - adjust based on preference
+            pipeline.imageProcessing.toneMappingEnabled = true;
+            pipeline.imageProcessing.toneMappingType = 1; // ACES
+            pipeline.imageProcessing.exposure = 1.0;
+            pipeline.imageProcessing.contrast = 1.1;
+            
+            // Bloom - enable on high/ultra
+            if (qualityLevel === 'high' || qualityLevel === 'ultra') {
+                pipeline.bloomEnabled = true;
+                pipeline.bloomThreshold = 0.8;
+                pipeline.bloomWeight = 0.3;
+                pipeline.bloomKernel = 64;
+                pipeline.bloomScale = 0.5;
+                
+                // Depth of Field
+                pipeline.depthOfFieldEnabled = false; // We'll handle DOF separately with the visualizer
+            }
+            
+            // SSR - only on ultra quality
+            if (qualityLevel === 'ultra' && camera) {
+                try {
+                    const ssr = new SSRRenderingPipeline("ssr", scene, [camera]);
+                    ssr.step = 32;
+                    ssr.reflectionSpecularFalloffExponent = 1;
+                    ssr.strength = 0.5;
+                    ssr.thickness = 0.5;
+                    ssrPipelineRef.current = ssr;
+                    
+                    console.log("[BabylonViewer] SSR pipeline initialized");
+                } catch (error) {
+                    console.error("[BabylonViewer] Failed to initialize SSR pipeline:", error);
+                }
+            }
+            
+            renderingPipelineRef.current = pipeline;
+            console.log(`[BabylonViewer] DefaultRenderingPipeline initialized at quality level: ${qualityLevel}`);
+        }
+
+        // Create IBL Shadows pipeline for enhanced shadow quality with environment lighting
+        try {
+            if (qualityLevel === 'ultra' && camera) {
+                // Use a simple version compatible with the API
+                const ibl = new IblShadowsRenderPipeline("ibl", scene);
+                iblShadowsPipelineRef.current = ibl;
+                console.log('[BabylonViewer] IBL Shadows pipeline initialized');
+            }
+        } catch (error) {
+            console.error('[BabylonViewer] Error initializing IBL Shadows pipeline:', error);
+        }
+    }, [settings?.qualityLevel]);
 
     // --- Effect for Scene Setup ---
     useEffect(() => {
@@ -423,7 +654,7 @@ const BabylonViewer: React.FC = () => {
         const scene = new Scene(engine);
         sceneRef.current = scene;
         // Apply initial background color from context or default
-        const initialBgColor = missionState.sceneSettings?.backgroundColor || '#222222';
+        const initialBgColor = settings?.backgroundColor || '#222222';
         scene.clearColor = Color4.FromHexString(initialBgColor + 'FF'); // Add alpha
 
         // Setup Camera
@@ -438,8 +669,63 @@ const BabylonViewer: React.FC = () => {
         camera.attachControl(canvas, true);
         camera.lowerRadiusLimit = 5;  // Prevent zooming too close
         camera.upperRadiusLimit = 1000; // Limit max zoom out
-        camera.wheelPrecision = 50; // Adjust zoom sensitivity
+        camera.wheelPrecision = 50;
 
+        // --- Setup HDR Environment and Tone Mapping ---
+        const setupHDREnvironment = () => {
+            // Clear any existing HDR environment
+            if (hdrTextureRef.current) {
+                hdrTextureRef.current.dispose();
+                hdrTextureRef.current = null;
+            }
+
+            if (settings?.hdrEnabled && settings.hdrFilePath) {
+                try {
+                    // Create HDR environment texture with correct path
+                    const hdrPath = settings.hdrFilePath.startsWith('/') ? 
+                        settings.hdrFilePath.substring(1) : settings.hdrFilePath;
+                    
+                    console.log('[BabylonViewer] Loading HDR from path:', hdrPath);
+                    
+                    const hdrTexture = new HDRCubeTexture(
+                        hdrPath,
+                        scene,
+                        512, // Size of the HDR texture (can be adjusted for performance)
+                        false, // No prefiltered texture
+                        true, // Generate mipmaps
+                        false, // Not inverted
+                        false // Do not update directly
+                    );
+
+                    // Set rotation
+                    hdrTexture.rotationY = settings.hdrRotation || 0;
+
+                    // Use the HDR texture as environment texture of the scene
+                    scene.environmentTexture = hdrTexture;
+                    
+                    // Set the environment intensity
+                    scene.environmentIntensity = settings.hdrIntensity || 1.0;
+
+                    // Store the HDR texture for later disposal
+                    hdrTextureRef.current = hdrTexture;
+
+                    console.log('[BabylonViewer] HDR environment loaded:', settings.hdrFilePath);
+                } catch (err) {
+                    console.error('[BabylonViewer] Error loading HDR environment:', err);
+                    // Fallback to default environment
+                    scene.environmentTexture = null;
+                    scene.environmentIntensity = settings.environmentIntensity || 1.0;
+                }
+            } else {
+                // Use standard environment texture if HDR is disabled
+                scene.environmentTexture = null;
+                scene.environmentIntensity = settings.environmentIntensity || 1.0;
+            }
+        };
+
+        // Set up tone mapping and post-processing
+        // Call setupToneMapping function that is now defined at component level
+        
         // --- Improved Environment Setup (Skybox) ---
         try {
             console.log('[BabylonViewer] Setting up port environment...');
@@ -489,16 +775,22 @@ const BabylonViewer: React.FC = () => {
         fillLight.diffuse = new Color3(0.6, 0.7, 0.8); // Bluish reflection from water
         fillLight.specular = new Color3(0.4, 0.5, 0.6);
 
-        // Shadow Generator with improved settings
-        // Check if sunlight exists before creating shadow generator
+        // Create Cascaded Shadow Generator for higher quality shadows
         if (sunLight) {
-            const shadowGenerator = new ShadowGenerator(2048, sunLight);
-            shadowGenerator.useExponentialShadowMap = true;
-            shadowGenerator.useBlurExponentialShadowMap = true;
-            shadowGenerator.blurKernel = 32;
-            shadowGenerator.darkness = 0.3;
-            shadowGenerator.transparencyShadow = true;
-            shadowGeneratorRef.current = shadowGenerator;
+            // Use Cascaded Shadow Generator for better quality and performance
+            const csg = new CascadedShadowGenerator(2048, sunLight);
+            csg.lambda = 0.9; // Distribution between cascades
+            csg.filter = ShadowGenerator.FILTER_PCF; // Use PCF filtering for softer shadows
+            csg.shadowMaxZ = 200; // Far plane for last cascade
+            csg.frustumEdgeFalloff = 0.1; // Soften edges
+            csg.usePercentageCloserFiltering = true; // Enable PCF 
+            csg.stabilizeCascades = true; // Reduce shadow flickering
+            csg.darkness = 0.3; // Shadow darkness
+
+            // Store the shadow generator in the ref for later use
+            shadowGeneratorRef.current = csg;
+            
+            console.log('[BabylonViewer] Cascaded shadow generator created.');
         } else {
             console.warn("[BabylonViewer] Sun light not available for shadow generator.");
             shadowGeneratorRef.current = null; // Ensure ref is null if no generator
@@ -543,17 +835,69 @@ const BabylonViewer: React.FC = () => {
         // --- Cleanup ---
         return () => {
             console.log('[BabylonViewer] Cleaning up scene...');
-            droneGroupRef.current?.dispose();
-            frustumNodeRef.current?.dispose();
-            waterMaterialRef.current?.dispose();
-            scene.onBeforeRenderObservable.clear(); // Clear observers added for water
-            window.removeEventListener('resize', resizeHandler);
-            scene.dispose();
-            engine.dispose();
-            console.log('[BabylonViewer] Scene cleanup complete.');
+            if (droneGroupRef.current) droneGroupRef.current.dispose();
+            if (frustumNodeRef.current) frustumNodeRef.current.dispose();
+            if (waterMaterialRef.current) waterMaterialRef.current.dispose();
+            
+            // Dispose of frustum meshes
+            if (frustumLinesRef.current) frustumLinesRef.current.dispose();
+            if (focusPlaneRef.current) focusPlaneRef.current.dispose();
+            if (nearPlaneRef.current) nearPlaneRef.current.dispose();
+            if (farPlaneRef.current) farPlaneRef.current.dispose();
+            if (lineMaterialRef.current) lineMaterialRef.current.dispose();
+            if (focusPlaneMaterialRef.current) focusPlaneMaterialRef.current.dispose();
+            
+            // Clean up HDR and post-processing
+            if (hdrTextureRef.current) {
+                hdrTextureRef.current.dispose();
+            }
+            
+            // Clean up environment
+            if (renderingPipelineRef.current) {
+                (renderingPipelineRef.current as DefaultRenderingPipeline).dispose();
+                renderingPipelineRef.current = null;
+            }
+            if (ssrPipelineRef.current) {
+                (ssrPipelineRef.current as SSRRenderingPipeline).dispose();
+                ssrPipelineRef.current = null;
+            }
+            if (iblShadowsPipelineRef.current) {
+                (iblShadowsPipelineRef.current as IblShadowsRenderPipeline).dispose();
+                iblShadowsPipelineRef.current = null;
+            }
+            if (sceneRef.current) {
+                sceneRef.current.environmentTexture = null;
+                sceneRef.current.environmentIntensity = 1.0;
+                sceneRef.current.dispose();
+            }
+            
+            if (engine) {
+                engine.dispose();
+            }
+            
+            // Disconnect observer
+            resizeHandler();
         };
 
-    }, [loadDroneModel, missionState.sceneSettings?.backgroundColor, setupDroneInteraction]);
+        // Call HDR and tone mapping setup
+        setupHDREnvironment();
+        setupToneMapping();
+
+        // Update frustum geometry
+        updateFrustumGeometry();
+
+        // Create a resize observer for handling canvas resizing
+        const observer = new ResizeObserver(() => {
+            if (engine) {
+                engine.resize();
+            }
+        });
+        
+        if (canvas) {
+            observer.observe(canvas);
+        }
+
+    }, [loadDroneModel, settings?.backgroundColor, setupDroneInteraction, setupToneMapping, updateFrustumGeometry]);
 
     // --- Effect for Rendering/Updating Mission Data & Applying Scene Settings ---
     useEffect(() => {
@@ -563,7 +907,6 @@ const BabylonViewer: React.FC = () => {
             return; 
         }
 
-        const settings = missionState.sceneSettings;
         if (settings) {
             // Background Color
             scene.clearColor = Color4.FromHexString(settings.backgroundColor + 'FF');
@@ -571,9 +914,9 @@ const BabylonViewer: React.FC = () => {
             // Environment Intensity
             scene.environmentIntensity = settings.environmentIntensity ?? 1.0;
 
-            // Skybox Visibility
+            // Skybox Visibility - ensure it's set according to Redux state
             if (skyboxMeshRef.current) {
-                skyboxMeshRef.current.setEnabled(settings.skyEnabled ?? false);
+                skyboxMeshRef.current.setEnabled(settings.skyEnabled ?? true);
             }
             
             // Grid Visibility & Creation/Disposal
@@ -610,7 +953,7 @@ const BabylonViewer: React.FC = () => {
 
             // --- Water Material Configuration for Harbor Waters ---
             // Check if water is enabled in settings
-            if (missionState.sceneSettings?.waterEnabled) {
+            if (settings?.waterEnabled) {
                 if (!waterMaterialRef.current) {
                     console.log("[BabylonViewer] Creating harbor water material...");
                     try {
@@ -696,7 +1039,7 @@ const BabylonViewer: React.FC = () => {
                 
                 // Create water plane for harbor
                 if (!waterMeshRef.current || waterMeshRef.current.isDisposed()) {
-                    const waterSize = missionState.sceneSettings?.gridSize || 200;
+                    const waterSize = settings.gridSize || 200;
                     waterMeshRef.current = MeshBuilder.CreateGround("waterMesh", { 
                         width: waterSize * 4,  // Extended water for harbor view
                         height: waterSize * 4, 
@@ -729,15 +1072,19 @@ const BabylonViewer: React.FC = () => {
             } else {
                 // Clean up if water is disabled
                 if (waterMeshRef.current && !waterMeshRef.current.isDisposed()) {
+                    waterMeshRef.current.setEnabled(false);
                     waterMeshRef.current.dispose();
                     waterMeshRef.current = null;
                 }
                 
                 if (waterMaterialRef.current) {
                     scene.onBeforeRenderObservable.clear(); // Remove any animation observers
-                    waterMaterialRef.current.getRenderList()?.forEach(mesh => {
-                        waterMaterialRef.current?.removeFromRenderList(mesh);
-                    });
+                    const renderList = waterMaterialRef.current.getRenderList();
+                    if (renderList) {
+                        for (const mesh of renderList) {
+                            waterMaterialRef.current.removeFromRenderList(mesh);
+                        }
+                    }
                     waterMaterialRef.current.dispose();
                     waterMaterialRef.current = null;
                 }
@@ -746,17 +1093,205 @@ const BabylonViewer: React.FC = () => {
                 if (groundMeshRef.current) {
                     groundMeshRef.current.setEnabled(true);
                 }
-                
-                // Clean up any remaining dock objects (redundant now but safe)
-                ['mainDock', 'dockEdge', 'craneBase', 'craneTower', 'craneArm', 'industrialBackground'].forEach(name => {
-                    const mesh = scene.getMeshByName(name);
-                    if (mesh) mesh.dispose();
-                });
-                scene.meshes.forEach(mesh => {
-                    if (mesh.name.includes('container') || mesh.name.includes('pillar')) {
-                        mesh.dispose();
+            }
+
+            // Setup HDR Environment and Tone Mapping if there's a scene
+            if (scene) {
+                // Find the functions in the current scope
+                const setupHDREnvironment = () => {
+                    // Clear any existing HDR environment
+                    if (hdrTextureRef.current) {
+                        hdrTextureRef.current.dispose();
+                        hdrTextureRef.current = null;
                     }
-                });
+
+                    if (settings?.hdrEnabled && settings.hdrFilePath) {
+                        try {
+                            // Create HDR environment texture with correct path
+                            const hdrPath = settings.hdrFilePath.startsWith('/') ? 
+                                settings.hdrFilePath.substring(1) : settings.hdrFilePath;
+                            
+                            console.log('[BabylonViewer] Loading HDR from path:', hdrPath);
+                            
+                            const hdrTexture = new HDRCubeTexture(
+                                hdrPath,
+                                scene,
+                                512, // Size of the HDR texture
+                                false, // No prefiltered texture
+                                true, // Generate mipmaps
+                                false, // Not inverted
+                                false // Do not update directly
+                            );
+
+                            // Set rotation
+                            hdrTexture.rotationY = settings.hdrRotation || 0;
+
+                            // Use the HDR texture as environment texture of the scene
+                            scene.environmentTexture = hdrTexture;
+                            
+                            // Set the environment intensity
+                            scene.environmentIntensity = settings.hdrIntensity || 1.0;
+
+                            // Store the HDR texture for later disposal
+                            hdrTextureRef.current = hdrTexture;
+
+                            console.log('[BabylonViewer] HDR environment loaded:', settings.hdrFilePath);
+                        } catch (err) {
+                            console.error('[BabylonViewer] Error loading HDR environment:', err);
+                            // Fallback to default environment
+                            scene.environmentTexture = null;
+                            scene.environmentIntensity = settings.environmentIntensity || 1.0;
+                        }
+                    } else {
+                        // Use standard environment texture if HDR is disabled
+                        scene.environmentTexture = null;
+                        scene.environmentIntensity = settings.environmentIntensity || 1.0;
+                    }
+                };
+
+                const setupToneMapping = () => {
+                    // Dispose existing pipelines if they exist
+                    if (renderingPipelineRef.current) {
+                        (renderingPipelineRef.current as DefaultRenderingPipeline).dispose();
+                        renderingPipelineRef.current = null;
+                    }
+                    
+                    if (ssrPipelineRef.current) {
+                        (ssrPipelineRef.current as SSRRenderingPipeline).dispose();
+                        ssrPipelineRef.current = null;
+                    }
+                    
+                    if (iblShadowsPipelineRef.current) {
+                        (iblShadowsPipelineRef.current as IblShadowsRenderPipeline).dispose();
+                        iblShadowsPipelineRef.current = null;
+                    }
+
+                    if (settings?.toneMapping) {
+                        // Create default rendering pipeline
+                        const pipeline = new DefaultRenderingPipeline(
+                            "toneMappingPipeline", 
+                            true, // HDR support
+                            scene, 
+                            [scene.activeCamera as ArcRotateCamera] // Cameras to apply the pipeline to
+                        );
+
+                        // Enable tone mapping
+                        pipeline.imageProcessing.toneMappingEnabled = true;
+
+                        // Set tone mapping type based on settings
+                        switch (settings.toneMappingType) {
+                            case 'ACES':
+                                pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+                                break;
+                            case 'Reinhard':
+                                pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_STANDARD;
+                                break;
+                            case 'Cineon':
+                                pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+                                break;
+                            case 'Hejl-Dawson':
+                                // Standard fallback since HEJLDAWSON is not available
+                                pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_STANDARD;
+                                break;
+                            default:
+                                pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+                        }
+
+                        // Set exposure and contrast
+                        pipeline.imageProcessing.exposure = settings.exposure || 1.4;
+                        pipeline.imageProcessing.contrast = settings.contrast || 1.1;
+
+                        // Enable bloom if available in settings
+                        if (settings.bloomEnabled) {
+                            pipeline.bloomEnabled = true;
+                            pipeline.bloomThreshold = settings.bloomThreshold || 0.8;
+                            pipeline.bloomWeight = settings.bloomIntensity || 0.5;
+                            pipeline.bloomKernel = settings.bloomKernel || 64;
+                            pipeline.bloomScale = settings.bloomScale || 0.5;
+                        } else {
+                            pipeline.bloomEnabled = false;
+                        }
+
+                        renderingPipelineRef.current = pipeline;
+                        
+                        // Add SSR (Screen Space Reflections) if enabled and high quality
+                        if (settings.qualityLevel === 'high' || settings.qualityLevel === 'ultra') {
+                            try {
+                                // Create SSR pipeline for enhanced reflections
+                                const ssr = new SSRRenderingPipeline("ssr", scene, [scene.activeCamera as ArcRotateCamera]);
+                                ssr.step = 0.02; // Default is 0.01, higher is better performance
+                                ssr.maxSteps = 128; // Default is 1000, lower is better performance
+                                ssr.maxDistance = 100; // Maximum distance for reflections
+                                ssr.strength = 0.8; // Default is 1
+                                ssrPipelineRef.current = ssr;
+                                
+                                // Create IBL Shadows pipeline for enhanced shadow quality with environment lighting
+                                const ibl = new IblShadowsRenderPipeline("ibl", scene);
+                                iblShadowsPipelineRef.current = ibl;
+                                
+                                console.log('[BabylonViewer] Advanced rendering pipelines initialized');
+                            } catch (error) {
+                                console.error('[BabylonViewer] Error initializing advanced rendering pipelines:', error);
+                            }
+                        }
+                        
+                        console.log('[BabylonViewer] Tone mapping setup complete');
+                    } else {
+                        // Clean up if tone mapping is disabled
+                        if (renderingPipelineRef.current) {
+                            (renderingPipelineRef.current as DefaultRenderingPipeline).dispose();
+                            renderingPipelineRef.current = null;
+                        }
+                        
+                        if (ssrPipelineRef.current) {
+                            (ssrPipelineRef.current as SSRRenderingPipeline).dispose();
+                            ssrPipelineRef.current = null;
+                        }
+                        
+                        if (iblShadowsPipelineRef.current) {
+                            (iblShadowsPipelineRef.current as IblShadowsRenderPipeline).dispose();
+                            iblShadowsPipelineRef.current = null;
+                        }
+                    }
+                };
+
+                // Call the functions to apply changes when settings update
+                setupHDREnvironment();
+                setupToneMapping();
+            }
+            
+            // Update water if settings change
+            if (waterMaterialRef.current) {
+                // (existing water update code)
+            }
+
+            // Handle shadow toggling in the scene settings update useEffect
+            if (settings?.shadowsEnabled !== undefined) {
+                if (shadowGeneratorRef.current) {
+                    const map = (shadowGeneratorRef.current as ShadowGenerator | CascadedShadowGenerator).getShadowMap();
+                    if (map) {
+                        const scene = map.getScene();
+                        if (scene) {
+                            scene.shadowsEnabled = settings.shadowsEnabled;
+                        }
+                    }
+                    
+                    if (settings.shadowsEnabled) {
+                        // Update shadow quality if needed
+                        if (settings.shadowQuality === 'high' && shadowGeneratorRef.current instanceof CascadedShadowGenerator) {
+                            shadowGeneratorRef.current.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+                            shadowGeneratorRef.current.frustumEdgeFalloff = 0.05; // Sharper edges
+                        } else if (settings.shadowQuality === 'medium' && shadowGeneratorRef.current instanceof CascadedShadowGenerator) {
+                            shadowGeneratorRef.current.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+                            shadowGeneratorRef.current.frustumEdgeFalloff = 0.1; // Medium edges
+                        } else if (shadowGeneratorRef.current instanceof CascadedShadowGenerator) {
+                            shadowGeneratorRef.current.filteringQuality = ShadowGenerator.QUALITY_LOW;
+                            shadowGeneratorRef.current.frustumEdgeFalloff = 0.2; // Softer edges
+                        }
+                    }
+
+                    console.log(`[BabylonViewer] Shadows ${settings.shadowsEnabled ? 'enabled' : 'disabled'}.`);
+                }
             }
         }
 
@@ -809,63 +1344,8 @@ const BabylonViewer: React.FC = () => {
         const gimbalRad = currentGimbalPitch * (Math.PI / 180);
         frustumNode.rotation = new Vector3(gimbalRad, Math.PI, 0); // Rotate around X-axis for pitch and Y-axis for alignment
 
-        // --- Clear Previous Frustum Meshes ---
-        frustumNode.getChildMeshes(true).forEach(mesh => mesh.dispose());
-        
-        // --- Calculate Frustum Geometry ---
-        const nearDist = 0.1; 
-        const farDist = Math.max(focusDistanceM * 1.5, 20); 
-        const focusPlaneGeom = calculateFrustumDimensions(cameraDetails, lensDetails, focusDistanceM);
-        const nearPlaneGeom = calculateFrustumDimensions(cameraDetails, lensDetails, nearDist);
-        const farPlaneGeom = calculateFrustumDimensions(cameraDetails, lensDetails, farDist);
-
-        // --- Create Frustum Meshes if Geometry is Available ---
-        if (focusPlaneGeom && nearPlaneGeom && farPlaneGeom) {
-            
-            // --- Define Materials ---
-            const focusPlaneColor = new Color3(0.1, 0.8, 0.1); // Green
-            const focusPlaneMaterial = new StandardMaterial("focusPlaneMat", scene);
-            focusPlaneMaterial.diffuseColor = focusPlaneColor;
-            focusPlaneMaterial.alpha = 0.4; 
-            focusPlaneMaterial.backFaceCulling = false; 
-            focusPlaneMaterial.freeze(); 
-
-            const lineColor = new Color3(0.2, 0.8, 1.0); // Cyan
-            const lineMaterial = new StandardMaterial("frustumLineMat", scene);
-            lineMaterial.diffuseColor = lineColor;
-            lineMaterial.emissiveColor = lineColor; 
-            lineMaterial.alpha = 0.6; 
-            lineMaterial.disableLighting = true; 
-            lineMaterial.freeze(); 
-
-            // --- Calculate Corner Points ---
-            const nearTL = new Vector3(-nearPlaneGeom.width / 2, nearPlaneGeom.height / 2, nearDist);
-            const nearTR = new Vector3(nearPlaneGeom.width / 2, nearPlaneGeom.height / 2, nearDist);
-            const nearBL = new Vector3(-nearPlaneGeom.width / 2, -nearPlaneGeom.height / 2, nearDist);
-            const nearBR = new Vector3(nearPlaneGeom.width / 2, -nearPlaneGeom.height / 2, nearDist);
-            const farTL = new Vector3(-farPlaneGeom.width / 2, farPlaneGeom.height / 2, farDist);
-            const farTR = new Vector3(farPlaneGeom.width / 2, farPlaneGeom.height / 2, farDist);
-            const farBL = new Vector3(-farPlaneGeom.width / 2, -farPlaneGeom.height / 2, farDist);
-            const farBR = new Vector3(farPlaneGeom.width / 2, -farPlaneGeom.height / 2, farDist);
-
-            // --- Create Meshes ---
-            const lines = [
-                [nearTL, farTL], [nearTR, farTR], [nearBL, farBL], [nearBR, farBR], // Edges
-                [nearTL, nearTR], [nearTR, nearBR], [nearBR, nearBL], [nearBL, nearTL], // Near plane rect
-                [farTL, farTR], [farTR, farBR], [farBR, farBL], [farBL, farTL] // Far plane rect
-            ];
-            const lineSystem = MeshBuilder.CreateLineSystem("frustumLines", { lines: lines, updatable: false }, scene);
-            lineSystem.material = lineMaterial; 
-            lineSystem.parent = frustumNode; 
-
-            const focusPlane = MeshBuilder.CreatePlane("focusPlane", { width: focusPlaneGeom.width, height: focusPlaneGeom.height, updatable: false }, scene);
-            focusPlane.position = new Vector3(0, 0, focusDistanceM); 
-            focusPlane.material = focusPlaneMaterial; 
-            focusPlane.parent = frustumNode;
-            
-        } else {
-            // console.log('[BabylonViewer] Skipping frustum creation (missing camera/lens details).');
-        }
+        // --- Update Frustum Meshes ---
+        updateFrustumGeometry();
 
         // Add drone meshes to water reflection AFTER group is positioned and exists
         if (waterMaterialRef.current && droneGroup) {
@@ -920,12 +1400,12 @@ const BabylonViewer: React.FC = () => {
     }, [
         missionState.currentMission, 
         missionState.hardware, 
-        missionState.sceneSettings, 
+        settings, 
         modelLoading, 
         loadDroneModel,
         gimbalPitch,
         cameraFollowsDrone,
-        droneHeading // Added droneHeading as dependency
+        droneHeading
     ]);
 
     // --- DOF Visualization Setup ---
@@ -972,14 +1452,37 @@ const BabylonViewer: React.FC = () => {
         
         if (cameraDetails && lensDetails && focusDistance && fStop) {
             // Update available f-stops from lens if present
-            if (lensDetails.aperture && Array.isArray(lensDetails.aperture)) {
-                setAvailableFStops(lensDetails.aperture);
+            if (lensDetails && (lensDetails as any).aperture && Array.isArray((lensDetails as any).aperture)) {
+                setAvailableFStops((lensDetails as any).aperture);
             }
             
             // Update the DOF visualization
             dofVisualizer.update(focusDistance, cameraDetails, lensDetails, fStop);
         }
     }, [dofVisualizer, missionState.hardware]);
+
+    // Add debug layer activation
+    useEffect(() => {
+        const scene = sceneRef.current;
+        if (!scene) return;
+        
+        // Add keyboard listener for debug layer
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'i') {
+                if (scene.debugLayer.isVisible()) {
+                    scene.debugLayer.hide();
+                } else {
+                    scene.debugLayer.show();
+                }
+            }
+        };
+        
+        window.addEventListener('keydown', handleKeyDown);
+        
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     // Explicitly return JSX for React.FC compatibility
     return (
@@ -1023,11 +1526,11 @@ const BabylonViewer: React.FC = () => {
                 touch-action="none" // Recommended for pointer events
             />
             {/* UI Overlays can be added here later */}
-            {missionState.sceneSettings && (
-                <ViewerSettingsOverlay
+            {settings && (
+                <ViewerSettingsOverlayFixed
                     isOpen={isSettingsOpen}
                     onClose={() => setIsSettingsOpen(false)}
-                    settings={missionState.sceneSettings}
+                    settings={settings}
                     onChange={handleSceneSettingChange}
                 />
             )}
@@ -1069,7 +1572,7 @@ const BabylonViewer: React.FC = () => {
                         missionState.hardware?.focusDistance || 10, 
                         missionState.hardware?.cameraDetails, 
                         missionState.hardware?.lensDetails, 
-                        missionState.hardware?.fStop || 2.8
+                        parseFloat(missionState.hardware?.fStop?.toString() || "2.8")
                     ) : 
                     { nearFocusDistanceM: 8, farFocusDistanceM: 12, totalDepthM: 4 }
                 }
