@@ -46,7 +46,7 @@ import ScaleIcon from '@mui/icons-material/Scale';
 import GridViewIcon from '@mui/icons-material/GridView';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
-import { SceneSettings, SceneTheme, SCENE_THEMES, GRID_PRESETS } from '../Local3DViewer/types/SceneSettings';
+import { SceneSettings, SceneTheme, SCENE_THEMES, GRID_PRESETS } from '../BabylonViewer/types/SceneSettings';
 import { metersToFeet, feetToMeters } from '../../utils/sensorCalculations';
 import SpeedIcon from '@mui/icons-material/Speed';
 
@@ -463,27 +463,16 @@ const SceneSettingsPanel: React.FC<SceneSettingsPanelProps> = ({
     if (!open) return null;
 
     return (
-        <StyledPanel>
+        <StyledPanel elevation={5}>
             <StyledHeader>
-              <Typography variant="subtitle1" fontWeight={500}>
-                Scene Settings
-              </Typography>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <QuickPresetButton 
-                  variant="outlined" 
-                  color="primary"
-                  size="small"
-                  onClick={applyPerformancePreset}
-                  title="Apply performance-optimized settings"
-                >
-                  Performance Mode
-                </QuickPresetButton>
-                <IconButton onClick={onClose} size="small" edge="end" aria-label="close">
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Stack>
+                <Typography variant="h6" sx={{ fontWeight: 500, fontSize: '1.1rem' }}>Scene Settings</Typography>
+                {/* Only show close button if onClose is provided */}
+                {onClose && (
+                    <IconButton onClick={onClose} size="small" sx={{ color: theme.palette.text.secondary }}>
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                )}
             </StyledHeader>
-
             <StyledTabs
               value={tabValue}
               onChange={handleTabChange}

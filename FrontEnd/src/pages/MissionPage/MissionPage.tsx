@@ -1,60 +1,63 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Box, Container, Typography, Paper, ToggleButtonGroup, ToggleButton, TextField, Stack, Button, IconButton, LinearProgress, Switch, FormControlLabel, Tabs, Tab, Divider, List, ListItem, ListItemAvatar, ListItemText, ListItemSecondaryAction, Avatar, Grid } from '@mui/material';
+import React, { useEffect, useRef } from 'react';
+import { Box, Tabs, Tab } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useMission } from '../../context/MissionContext';
-import Local3DViewer from '../../components/Local3DViewer';
-import { GCP, AltitudeReference, LocalCoord, PathSegment, Waypoint, LatLng } from '../../types/mission'; // Import more types
-import { generateUUID, latLngToLocal, localToLatLng } from '../../utils/coordinateUtils'; // Import converters
-import { generateRasterPathSegment, RasterParams, addTakeoffAndLanding } from '../../utils/pathUtils';
-import { feetToMeters } from '../../utils/sensorCalculations'; // Import converter for feet to meters
-import { MissionArea } from '../../context/MissionContext'; // Import MissionArea interface
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import PauseIcon from '@mui/icons-material/Pause';
-import UploadIcon from '@mui/icons-material/Upload'; // Import Upload icon
-import PanToolIcon from '@mui/icons-material/PanTool'; // Icon for Loiter/Hold
-import ViewInArIcon from '@mui/icons-material/ViewInAr';
-import DeleteIcon from '@mui/icons-material/Delete';
-import MissionPlanningStep from './Steps/MissionPlanningStep'; // Import our renamed component
+import { GCP, LatLng } from '../../types/mission';
+import { generateUUID, latLngToLocal } from '../../utils/coordinateUtils';
+import MissionPlanningStep from './Steps/MissionPlanningStep';
+// --- Import Step Components ---
+import MissionPreChecksStep from './Steps/MissionPreChecksStep';
+import BuildSceneStep from './Steps/BuildSceneStep';
+// --- Import the CORRECT Hardware Settings Component ---
+import HardwareVisualizationSettings from '../../components/HardwareVisualizationSettings/HardwareVisualizationSettings';
+import BabylonViewer from '../../components/BabylonViewer/BabylonViewer';
+// --- Import SubNavigation Component ---
+import SubNavigation from './components/SubNavigation';
 
-// MAVLink Commands (Examples)
-const MAV_CMD_NAV_WAYPOINT = 16;
-const MAV_CMD_NAV_LOITER_UNLIM = 17;
-const MAV_CMD_DO_SET_MODE = 176;
-// MAVLink Flight Modes (Examples - values depend on specific firmware, e.g., ArduPilot)
-const COPTER_FLIGHT_MODE_LOITER = 5;
+// Import icons for the tabs
+import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
+import CategoryIcon from '@mui/icons-material/Category';
+import RouteIcon from '@mui/icons-material/Route';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+
+// Create a custom styled Tab component that includes an icon
+const StyledTab = styled(Tab)(() => ({
+  minHeight: '64px',
+  textTransform: 'none',
+  fontWeight: 500,
+  fontSize: '0.875rem',
+  color: 'rgba(255, 255, 255, 0.7)',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  paddingTop: '6px',
+  paddingBottom: '6px',
+  '&.Mui-selected': {
+    color: '#4fc3f7',
+  },
+  '&:hover': {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  '& .MuiTab-iconWrapper': {
+    marginBottom: '4px',
+    marginRight: '0'
+  }
+}));
 
 // Inner component with access to context
 const MissionPageContent: React.FC = () => {
   const { state, dispatch } = useMission();
-  const { currentMission, isSimulating, isLive, simulationSpeed, simulationProgress, activeControlPane } = state;
+  const { currentMission, isLive, activeControlPane } = state;
 
   // --- ADD LOG --- Log currentMission on component mount/update
   useEffect(() => {
     console.log('[MissionPageContent] Component Mount/Update. Current Mission:', currentMission);
-  }, [currentMission]);
+    
+    // Add logging to check if SubNavigation will be rendered
+    console.log('[MissionPageContent] Active Control Pane:', activeControlPane);
+    console.log('[MissionPageContent] SubNavigation should be visible in the right panel');
+  }, [currentMission, activeControlPane]);
   // --- END LOG ---
-
-  // Determine the current operating mode based on isLive state
-  const currentMode = isLive ? 'live' : 'simulation';
-
-  // State for Raster Pattern Inputs
-  const [horizontalDistance, setHorizontalDistance] = useState<string>('50');
-  const [rowSpacing, setRowSpacing] = useState<string>('10');
-  const [numRows, setNumRows] = useState<string>('5');
-  const [startAltitude, setStartAltitude] = useState<string>('20');
-  // New state for raster options
-  const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
-  const [snakePattern, setSnakePattern] = useState<boolean>(true);
-
-  // State for Drone Position (Placeholder for now)
-  const [dronePos, setDronePos] = useState<[number, number, number]>([0, 0.5, 0]);
-
-  // State for the starting position of the raster pattern
-  const [rasterStartPos, setRasterStartPos] = useState<LocalCoord>({ x: 0, y: 0, z: 0 }); // Default start point on ground
-
-  // State for LIVE drone telemetry (Local Coordinates)
-  const [liveDronePosition, setLiveDronePosition] = useState<LocalCoord | null>(null);
-  const [liveDroneRotation, setLiveDroneRotation] = useState({ heading: 0, pitch: 0, roll: 0 });
 
   // Ref for the mock telemetry interval
   const telemetryIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -69,11 +72,11 @@ const MissionPageContent: React.FC = () => {
     // Only run if there's a mission and it has no GCPs yet
     if (currentMission && (!currentMission.gcps || currentMission.gcps.length === 0)) {
       console.log("Adding default GCPs to mission context...");
-      
+
       // Position GCPs with GCP-A at the center (0,0,0)
-      const feetToMeters = 0.3048;
-      const sideLength = 15 * feetToMeters; // 15 feet in meters
-      
+      const feetToMetersVal = 0.3048; // Use a local constant
+      const sideLength = 15 * feetToMetersVal; // 15 feet in meters
+
       const defaultSurveyPoints: Array<{ name: string; x: number; y: number; z: number }> = [
         { name: 'GCP-A', x: 0, y: 0, z: 0 }, // Origin GCP - Center of the scene
         { name: 'GCP-B', x: sideLength, y: 0, z: 0 }, // To the right (East) of GCP-A
@@ -95,108 +98,16 @@ const MissionPageContent: React.FC = () => {
       defaultGcps.forEach(gcp => {
         dispatch({ type: 'ADD_GCP', payload: gcp });
       });
-      
+
       // If we have a takeoff point, make sure it's at the center (GCP-A location)
       if (!currentMission.takeoffPoint) {
-        dispatch({ 
-          type: 'SET_TAKEOFF_POINT', 
-          payload: { x: 0, y: 0, z: 0 } 
+        dispatch({
+          type: 'SET_TAKEOFF_POINT',
+          payload: { x: 0, y: 0, z: 0 }
         });
       }
     }
   }, [currentMission, dispatch]);
-
-  // Handler to generate the raster path
-  const handleGeneratePath = () => {
-    if (!currentMission) {
-      console.error("Cannot generate path without a current mission.");
-      // Optionally show an error message to the user
-      return;
-    }
-
-    const rowLengthNum = parseFloat(horizontalDistance);
-    const rowSpacingNum = parseFloat(rowSpacing);
-    const numRowsNum = parseInt(numRows, 10);
-    const altitudeNum = parseFloat(startAltitude);
-
-    // Basic Input Validation
-    if (isNaN(rowLengthNum) || rowLengthNum <= 0 ||
-        isNaN(rowSpacingNum) || rowSpacingNum <= 0 ||
-        isNaN(numRowsNum) || numRowsNum <= 0 ||
-        isNaN(altitudeNum) || altitudeNum < 0) {
-      console.error("Invalid raster parameters. Please enter positive numbers.");
-      // Optionally show an error message to the user
-      return;
-    }
-    
-    // Ensure takeoff point is defined
-    if (!currentMission.takeoffPoint) {
-      console.error("Takeoff point is not defined. Please set a takeoff point in the Pre-Checks step.");
-      return;
-    }
-
-    // Ensure safety parameters are defined
-    if (!currentMission.safetyParams) {
-      console.error("Safety parameters are not defined.");
-      return;
-    }
-    
-    // Use RELATIVE altitude reference for the generated path (AGL)
-    const altRef = AltitudeReference.RELATIVE;
-
-    // Prepare parameters for the utility function
-    const params = {
-      startPos: { ...rasterStartPos, z: 0 }, // Start path generation at z=0 relative to startPos
-      rowLength: rowLengthNum,
-      rowSpacing: rowSpacingNum,
-      numRows: numRowsNum,
-      altitude: altitudeNum,
-      altReference: altRef,
-      orientation: orientation, // Pass orientation
-      snakePattern: snakePattern, // Pass snake pattern flag
-      defaultSpeed: currentMission.defaultSpeed || 5, // Use default if not specified
-    };
-
-    console.log("Generating raster path with params:", params);
-    let newPathSegment = generateRasterPathSegment(params);
-    
-    // Enhance the path with takeoff and landing waypoints based on safety parameters
-    newPathSegment = addTakeoffAndLanding(
-      newPathSegment, 
-      currentMission.takeoffPoint, 
-      currentMission.safetyParams
-    );
-    
-    console.log("Generated path segment with takeoff and landing:", newPathSegment);
-
-    // Dispatch action to add the segment
-    dispatch({ type: 'ADD_PATH_SEGMENT', payload: newPathSegment });
-  };
-
-  // Toggle between simulation and live mode - NOW ONLY SETS THE MODE
-  const handleModeChange = (_event: React.MouseEvent<HTMLElement>, newMode: string | null) => {
-    if (newMode === 'simulation') {
-      dispatch({ type: 'SET_LIVE_MODE', payload: false });
-      // DO NOT start simulation automatically here
-      // dispatch({ type: 'START_SIMULATION' }); 
-    } else if (newMode === 'live') {
-      dispatch({ type: 'STOP_SIMULATION' }); // Stop simulation if switching to live
-      dispatch({ type: 'SET_LIVE_MODE', payload: true });
-    }
-  };
-
-  // Handlers for Play/Pause buttons
-  const handlePlaySimulation = () => {
-    if (currentMode === 'simulation') {
-      dispatch({ type: 'START_SIMULATION' });
-    }
-  };
-
-  const handlePauseSimulation = () => {
-    if (currentMode === 'simulation') {
-      dispatch({ type: 'STOP_SIMULATION' });
-    }
-  };
 
   // Effect to manage mock WebSocket / Telemetry Interval
   useEffect(() => {
@@ -207,7 +118,7 @@ const MissionPageContent: React.FC = () => {
       let mockLon = currentMission.localOrigin.longitude;
       let mockAlt = 10; // Start 10m relative altitude
       let mockHeading = 0;
-      
+
       telemetryIntervalRef.current = setInterval(() => {
         // Simulate slight movement (e.g., drifting north-east)
         mockLat += 0.00001;
@@ -216,11 +127,8 @@ const MissionPageContent: React.FC = () => {
         mockHeading = (mockHeading + 1) % 360; // Slow spin
 
         const mockLatLng: LatLng = { latitude: mockLat, longitude: mockLon };
-        const localCoords = latLngToLocal(mockLatLng, currentMission.localOrigin!, mockAlt);
-        
-        // Update state for the 3D viewer
-        setLiveDronePosition(localCoords);
-        setLiveDroneRotation({ heading: mockHeading, pitch: 0, roll: 0 }); // Simple rotation for now
+        // Convert coordinates but don't use them since we removed the state setters
+        latLngToLocal(mockLatLng, currentMission.localOrigin!, mockAlt);
 
         // console.log("Mock Telemetry Update:", { localCoords, heading: mockHeading });
       }, 100); // Update 10 times per second
@@ -232,9 +140,7 @@ const MissionPageContent: React.FC = () => {
         clearInterval(telemetryIntervalRef.current);
         telemetryIntervalRef.current = null;
       }
-      // Reset live position when leaving live mode
-      setLiveDronePosition(null);
-      setLiveDroneRotation({ heading: 0, pitch: 0, roll: 0 });
+      
       if (isLive && !currentMission?.localOrigin) {
         console.error("Cannot start live telemetry: Mission local origin is not set.");
       }
@@ -250,206 +156,139 @@ const MissionPageContent: React.FC = () => {
     };
   }, [isLive, currentMission?.localOrigin]); // Rerun if mode or origin changes
 
-  // Handler for uploading mission (mock)
-  const handleUploadMission = () => {
-    if (!currentMission || !currentMission.pathSegments.length || !currentMission.localOrigin) {
-      console.error("Cannot upload: No mission, path segments, or local origin available.");
-      return;
-    }
+  // Add type definition for control pane values
+  type ControlPaneType = 'pre-checks' | 'build-scene' | 'mission-planning' | 'hardware' | 'live-operation';
 
-    // Use the first path segment for simplicity
-    const segmentToUpload = currentMission.pathSegments[0]; 
-    if (!segmentToUpload.waypoints || segmentToUpload.waypoints.length === 0) {
-      console.error("Cannot upload: Selected path segment has no waypoints.");
-      return;
-    }
-
-    console.log("--- Generating Mock MAVLink Waypoint Plan ---");
-    console.log(`Using Local Origin: Lat ${currentMission.localOrigin.latitude}, Lon ${currentMission.localOrigin.longitude}`);
-
-    const mavlinkWaypoints: any[] = [];
-    segmentToUpload.waypoints.forEach((wp, index) => {
-      if (!wp.local) {
-        console.warn(`Skipping waypoint ${index}: Missing local coordinates.`);
-        return;
-      }
-      // Convert local back to global for MAVLink
-      const globalWp = localToLatLng(wp.local, currentMission.localOrigin!);
-      
-      const mavWp = {
-        seq: index, // Sequence number
-        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
-        command: MAV_CMD_NAV_WAYPOINT,
-        current: index === 0 ? 1 : 0, // Mark first waypoint as current for some autopilots
-        autocontinue: 1, // Move to next waypoint automatically
-        param1: wp.holdTime || 0, // Hold time in seconds
-        param2: 5, // Acceptance radius (e.g., 5 meters)
-        param3: 0, // Pass through waypoint (0 = stop at point, >0 = radius to pass through)
-        param4: NaN, // Yaw angle (NaN to ignore, or specify in degrees)
-        x: globalWp.latitude, // Latitude
-        y: globalWp.longitude, // Longitude
-        z: wp.altitude // Altitude (relative based on frame)
-      };
-      mavlinkWaypoints.push(mavWp);
-    });
-
-    console.log("Generated Waypoints:", mavlinkWaypoints);
-    console.log("--- End Mock MAVLink Plan ---");
-    console.log("In a real application, this plan would be sent to the drone via the backend/WebSocket.");
-    // TODO: Send `mavlinkWaypoints` array via WebSocket
-  };
-
-  // Handler for sending Loiter command (mock)
-  const handleLoiterCommand = () => {
-    if (!isLive) {
-      console.warn("Loiter command only applicable in Live mode.");
-      return;
-    }
-    console.log("--- Sending MAVLink Command (Mock) ---");
-    // Option 1: Send Loiter command directly
-    console.log("Command: MAV_CMD_NAV_LOITER_UNLIM (17)");
-    // Option 2: Set flight mode
-    console.log(`Command: MAV_CMD_DO_SET_MODE (176), Mode: ${COPTER_FLIGHT_MODE_LOITER} (Loiter)`);
-    console.log("In a real application, this command would be sent via the backend/WebSocket.");
-    // TODO: Send appropriate MAVLink command via WebSocket
-  };
-
-  // Handler for orientation toggle
-  const handleOrientationChange = (
-    _event: React.MouseEvent<HTMLElement>,
-    newOrientation: 'horizontal' | 'vertical' | null,
-  ) => {
-    if (newOrientation !== null) {
-      setOrientation(newOrientation);
-    }
-  };
-
-  // Handle tab change
-  const handleTabChange = (event: React.SyntheticEvent, newValue: 'pre-checks' | 'build-scene' | 'mission-planning') => {
+  // Handle tab change with proper typing
+  const handleTabChange = (event: React.SyntheticEvent, newValue: ControlPaneType) => {
+    // Consider adding specific types instead of 'any' if possible for control pane values
     dispatch({ type: 'SET_ACTIVE_CONTROL_PANE', payload: newValue });
   };
 
+  // Inside MissionsPage component - Preloading logic (adjust as needed)
+  useEffect(() => {
+    // Preload after a short delay to prioritize initial render
+    const timer = setTimeout(() => {
+       // Ensure these paths are correct
+       import('./Steps/MissionPreChecksStep');
+       import('./Steps/BuildSceneStep');
+       import('./Steps/MissionPlanningStep');
+       import('../../components/HardwareVisualizationSettings/HardwareVisualizationSettings');
+    }, 500); // Adjust delay as needed
+
+    return () => clearTimeout(timer); // Cleanup timer on unmount
+  }, []);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs 
-          value={activeControlPane} 
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 72px)' }}> 
+      {/* 1. Top Tabs section */}
+      <Box sx={{ 
+        borderBottom: 1, 
+        borderColor: 'divider', 
+        bgcolor: '#1e1e1e',
+        flexShrink: 0 // Prevent shrinking
+      }}>
+        <Tabs
+          value={activeControlPane}
           onChange={handleTabChange}
           aria-label="mission workflow tabs"
+          indicatorColor="primary"
+          textColor="inherit"
+          variant="fullWidth"
+          sx={{
+            minHeight: '64px', // Taller tabs to accommodate icons
+            '& .MuiTabs-indicator': {
+              backgroundColor: '#4fc3f7',
+              height: '3px',
+            }
+          }}
         >
-          <StyledTab label="Pre-Checks" value="pre-checks" />
-          <StyledTab label="Build Scene" value="build-scene" />
-          <StyledTab label="Mission Planning" value="mission-planning" />
+          <StyledTab 
+            icon={<FlightTakeoffIcon />} 
+            label="Pre-Checks" 
+            value="pre-checks" 
+          />
+          <StyledTab 
+            icon={<CategoryIcon />} 
+            label="Build Scene" 
+            value="build-scene" 
+          />
+          <StyledTab 
+            icon={<RouteIcon />} 
+            label="Mission Planning" 
+            value="mission-planning" 
+          />
+          <StyledTab 
+            icon={<CameraAltIcon />} 
+            label="Hardware" 
+            value="hardware" 
+          />
         </Tabs>
       </Box>
-      
+
+      {/* 2. SubNavigation - Moved here, below Tabs, full width */}
+      <SubNavigation
+          sx={{ 
+              // Apply styles matching MissionPlanningLayout toolbar
+              backgroundColor: 'rgba(21, 21, 21, 0.97)', 
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)', 
+              flexShrink: 0, // Prevent shrinking
+              // Add padding to match Toolbar variant="dense" if needed
+              // pl: { xs: 2, sm: 3 }, 
+              // pr: { xs: 2, sm: 3 },
+          }} 
+      />
+
+      {/* 3. Main content area - Takes remaining space */}
       <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
         {/* Left Panel - Control pane */}
-        <Box sx={{ 
-          width: '25%', 
-          borderRight: 1, 
-          borderColor: 'divider', 
-          height: '100%', 
-          overflow: 'auto',
+        <Box sx={{
+          width: { xs: '100%', sm: '350px' },
+          minWidth: '300px',
+          borderRight: { sm: 1 },
+          borderColor: 'divider',
+          height: '100%', // Full height of parent
+          overflowY: 'auto',
+          bgcolor: '#252526',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          pt: 1,
+          position: 'relative',
+          zIndex: 5
         }}>
-          <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+          <Box sx={{ flexGrow: 1, overflowY: 'auto', p: { xs: 1, sm: 2 } }}>
             {activeControlPane === 'pre-checks' && <MissionPreChecksStep />}
             {activeControlPane === 'build-scene' && <BuildSceneStep />}
             {activeControlPane === 'mission-planning' && <MissionPlanningStep />}
-          </Box>
-          
-          <Divider />
-          
-          {/* Hardware visualization settings panel */}
-          <Box sx={{ height: '40%', overflow: 'auto' }}>
-            <HardwareVisualizationSettings />
+            {/* Hardware component rendered here based on activeControlPane */}
+            {activeControlPane === 'hardware' && <HardwareVisualizationSettings onClose={() => {}} />}
           </Box>
         </Box>
-        
-        {/* Right Panel - 3D Viewer */}
-        <Box sx={{ width: '75%', height: '100%' }}>
-          <Local3DViewer height="100%" />
+
+        {/* Right Panel - 3D Viewer - Now occupies remaining space */}
+        <Box sx={{
+          // width: { xs: '100%', sm: 'calc(100% - 350px)' }, // Width is now determined by flex parent
+          flexGrow: 1, // Takes remaining horizontal space
+          height: '100%', // Full height of parent
+          display: 'flex', // Use flex to manage viewer height 
+          flexDirection: 'column', // Stack items vertically
+          overflow: 'hidden',
+          // Debug border
+          // border: process.env.NODE_ENV === 'development' ? '2px dashed blue' : 'none',
+        }}>
+          {/* BabylonViewer wrapper takes full space available */}
+          <Box sx={{ 
+            width: '100%', 
+            flexGrow: 1, // Takes all vertical space in this panel
+            minHeight: 0, // Important for flex item height calculation
+            overflow: 'hidden',
+            // Debug border
+            // border: process.env.NODE_ENV === 'development' ? '2px dotted green' : 'none',
+          }}>
+            <BabylonViewer />
+          </Box>
         </Box>
       </Box>
-    </Box>
-  );
-};
-
-// Add a new component for displaying selected face area information
-const SelectedAreaInformation: React.FC = () => {
-  const { state } = useMission();
-  const { selectedFace } = state;
-
-  if (!selectedFace) return null;
-
-  // Convert area to square feet (assuming area is in square meters)
-  const areaInSquareFeet = selectedFace.area * 10.764;
-
-  return (
-    <Box sx={{ p: 2, mt: 2, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 1 }}>
-      <Typography variant="h6" sx={{ mb: 1 }}>Selected Mission Area</Typography>
-      <Typography variant="body2" sx={{ mb: 1 }}>
-        <strong>Area ID:</strong> {selectedFace.faceId}
-      </Typography>
-      <Typography variant="body2" sx={{ mb: 1 }}>
-        <strong>Surface Area:</strong> {areaInSquareFeet.toFixed(2)} sq ft
-      </Typography>
-      <Typography variant="body2">
-        <strong>Object:</strong> {selectedFace.objectId}
-      </Typography>
-    </Box>
-  );
-};
-
-// Add the component to the BuildSceneStep (assuming this component exists)
-// If BuildSceneStep doesn't exist, you'll need to create it
-
-const BuildSceneStep: React.FC = () => {
-  return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>Build Your Scene</Typography>
-      <Typography variant="body2" sx={{ mb: 2 }}>
-        Add objects to your scene by using the tools below. Click on faces to select areas for mission planning.
-      </Typography>
-      
-      {/* Add scene building controls here */}
-      
-      {/* Add the selected area information component */}
-      <SelectedAreaInformation />
-    </Box>
-  );
-};
-
-// Define StyledTab component
-const StyledTab = styled(Tab)(({ theme }) => ({
-  textTransform: 'none',
-  fontWeight: 500,
-  fontSize: '0.9rem',
-  minWidth: 120,
-}));
-
-// Define missing step components
-const MissionPreChecksStep: React.FC = () => {
-  return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>Mission Pre-Checks</Typography>
-      <Typography variant="body2">
-        Configure mission settings and verify hardware before takeoff.
-      </Typography>
-    </Box>
-  );
-};
-
-// Define HardwareVisualizationSettings component (simplified version)
-const HardwareVisualizationSettings: React.FC = () => {
-  return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>Hardware Visualization</Typography>
-      <Typography variant="body2">
-        Configure hardware visualization settings.
-      </Typography>
     </Box>
   );
 };

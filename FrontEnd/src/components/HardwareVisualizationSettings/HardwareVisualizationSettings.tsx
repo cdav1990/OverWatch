@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
     Box, 
     Typography, 
-    Stack, 
-    FormControl, 
-    InputLabel, 
-    Select, 
+    Select as MuiSelect,
     MenuItem, 
     Slider, 
     Switch, 
@@ -16,10 +13,6 @@ import {
     SelectChangeEvent
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import CameraAltIcon from '@mui/icons-material/CameraAlt';
-import LensIcon from '@mui/icons-material/Lens';
-import TuneIcon from '@mui/icons-material/Tune';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import CloseIcon from '@mui/icons-material/Close';
 
 import { useMission } from '../../context/MissionContext';
@@ -30,19 +23,14 @@ import { getCameraById, getLensById, getLensFStops, getCompatibleLenses } from '
 
 // Styled components that match DronePositionControlPanel
 const PanelContainer = styled(Paper)(({ theme }) => ({
-    position: 'absolute',
-    top: '20px',
-    right: '20px',
-    width: '350px',
     padding: theme.spacing(1.5),
-    backgroundColor: 'rgba(21, 21, 21, 0.97)',
+    backgroundColor: 'transparent',
     color: theme.palette.common.white,
     borderRadius: '4px',
-    boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.5)',
-    zIndex: 1300, // Ensure it's above other elements like Cesium/3D viewer controls
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+    width: '100%'
 }));
 
 const Header = styled(Box)(({ theme }) => ({
@@ -68,20 +56,7 @@ const SliderLabel = styled(Typography)({
     fontWeight: 400,
 });
 
-const ValueDisplay = styled(Box)(({ theme }) => ({
-    minWidth: '70px',
-    textAlign: 'right',
-    padding: '3px 6px',
-    borderRadius: '2px',
-    fontSize: '0.8rem',
-    fontFamily: 'monospace',
-    letterSpacing: '0.5px',
-    backgroundColor: 'rgba(40, 40, 40, 0.9)',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
-    color: '#4fc3f7'
-}));
-
-const StyledSlider = styled(Slider)(({ theme }) => ({
+const StyledSlider = styled(Slider)(() => ({
     color: '#4fc3f7',
     height: 4,
     flexGrow: 1,
@@ -108,7 +83,7 @@ const StyledSlider = styled(Slider)(({ theme }) => ({
     },
 }));
 
-const StyledSwitch = styled(Switch)(({ theme }) => ({
+const StyledSwitch = styled(Switch)(() => ({
     '& .MuiSwitch-switchBase.Mui-checked': {
       color: '#4fc3f7',
       '& + .MuiSwitch-track': {
@@ -133,7 +108,8 @@ const SectionTitle = styled(Typography)(({ theme }) => ({
     letterSpacing: '0.5px',
 }));
 
-const StyledSelect = styled(Select)(({ theme }) => ({
+// Restore StyledSelect styled component using MuiSelect alias
+const StyledSelect = styled(MuiSelect)(({ theme }) => ({
     fontSize: '0.85rem',
     color: theme.palette.common.white,
     '& .MuiOutlinedInput-notchedOutline': {
@@ -155,8 +131,9 @@ const DEFAULT_CAMERA_ID = 'phase-one-ixm-100';
 const DEFAULT_LENS_ID = 'phaseone-rsm-80mm';
 
 interface HardwareVisualizationSettingsProps {
-    isOpen: boolean;
-    onClose: () => void;
+    // Make isOpen and onClose optional as they are not needed when embedded in a tab
+    // isOpen?: boolean;
+    onClose?: () => void;
     onVisualizationSettingsChange?: (settings: {
         showNearFocusPlane: boolean;
         showFarFocusPlane: boolean;
@@ -168,7 +145,7 @@ interface HardwareVisualizationSettingsProps {
 }
 
 const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps> = ({ 
-    isOpen,
+    // isOpen,
     onClose,
     onVisualizationSettingsChange
 }) => {
@@ -176,9 +153,6 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     const { forceRerender } = useThreeJSState();
     const { hardware, isCameraFrustumVisible } = state;
 
-    // Visualization settings tabs
-    const [activeTab, setActiveTab] = useState<'hardware' | 'visualization' | 'visibility'>('hardware');
-    
     // Additional visualization settings (not in context)
     const [visualizationSettings, setVisualizationSettings] = useState({
         showNearFocusPlane: true,
@@ -249,7 +223,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     }, [hardware?.camera, hardware?.cameraDetails]);
 
     // Handle camera selection - fix type issues
-    const handleCameraChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+    const handleCameraChange = (event: SelectChangeEvent<unknown>) => {
         const cameraId = event.target.value as string;
         const cameraDetails = getCameraById(cameraId);
         if (cameraDetails) {
@@ -299,7 +273,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     };
 
     // Handle lens selection - fix type issues
-    const handleLensChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+    const handleLensChange = (event: SelectChangeEvent<unknown>) => {
         const lensId = event.target.value as string;
         const lensDetails = getLensById(lensId);
         if (lensDetails) {
@@ -330,8 +304,9 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     };
 
     // Handle f-stop selection - fix type issues
-    const handleFStopChange = (event: React.ChangeEvent<{ value: unknown }>) => {
-        const fStop = Number(event.target.value);
+    const handleFStopChange = (event: SelectChangeEvent<unknown>) => {
+        const fStopValue = event.target.value as string;
+        const fStop = Number(fStopValue);
         dispatch({
             type: 'UPDATE_HARDWARE_FIELD',
             payload: { field: 'fStop', value: fStop }
@@ -368,7 +343,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
     };
 
     // Toggle camera frustum visibility
-    const handleFrustumVisibilityToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFrustumVisibilityToggle = () => {
         dispatch({ type: 'TOGGLE_CAMERA_FRUSTUM_VISIBILITY' });
     };
 
@@ -388,49 +363,37 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
         }
     };
 
-    // Only render if panel is open
-    if (!isOpen) return null;
-
     return (
         <PanelContainer>
-            <Header>
-                <Typography variant="h6" component="h2" sx={{ fontWeight: 500, fontSize: '1rem' }}>
-                    Camera Settings
-                </Typography>
-                <IconButton 
-                    size="small" 
-                    onClick={onClose}
-                    sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                >
-                    <CloseIcon fontSize="small" />
-                </IconButton>
-            </Header>
+            {onClose && (
+                <Header>
+                    <Typography variant="h6" component="h2" sx={{ fontWeight: 500, fontSize: '1rem' }}>
+                        Camera Settings
+                    </Typography>
+                    <IconButton 
+                        size="small" 
+                        onClick={onClose}
+                        sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                </Header>
+            )}
+            {!onClose && (
+                 <Typography variant="h6" component="h2" sx={{ fontWeight: 500, fontSize: '1rem', mb: 1, borderBottom: '1px solid rgba(255, 255, 255, 0.1)', pb: 1 }}>
+                    Hardware Visualization
+                 </Typography>
+            )}
 
             {/* Camera & Lens Selection */}
             <SectionTitle>Camera & Lens</SectionTitle>
             <ControlRow>
                 <SliderLabel>Camera</SliderLabel>
-                <Select
+                <StyledSelect
                     fullWidth
                     size="small"
                     value={hardware?.camera || ''}
                     onChange={handleCameraChange}
-                    sx={{
-                        fontSize: '0.85rem',
-                        color: 'white',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'rgba(255, 255, 255, 0.2)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'rgba(255, 255, 255, 0.3)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#4fc3f7',
-                        },
-                        '& .MuiSelect-icon': {
-                            color: 'rgba(255, 255, 255, 0.5)',
-                        },
-                    }}
                     MenuProps={{
                         PaperProps: {
                             sx: {
@@ -449,33 +412,17 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                             {camera.brand} {camera.model}
                         </MenuItem>
                     ))}
-                </Select>
+                </StyledSelect>
             </ControlRow>
 
             <ControlRow>
                 <SliderLabel>Lens</SliderLabel>
-                <Select
+                <StyledSelect
                     fullWidth
                     size="small"
                     value={hardware?.lens || ''}
                     onChange={handleLensChange}
                     disabled={!hardware?.camera}
-                    sx={{
-                        fontSize: '0.85rem',
-                        color: 'white',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'rgba(255, 255, 255, 0.2)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'rgba(255, 255, 255, 0.3)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#4fc3f7',
-                        },
-                        '& .MuiSelect-icon': {
-                            color: 'rgba(255, 255, 255, 0.5)',
-                        },
-                    }}
                     MenuProps={{
                         PaperProps: {
                             sx: {
@@ -494,7 +441,7 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                             {lens.brand} {lens.model}
                         </MenuItem>
                     ))}
-                </Select>
+                </StyledSelect>
             </ControlRow>
 
             <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', mt: 1, mb: 1 }} />
@@ -503,29 +450,13 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
             <SectionTitle>Camera Settings</SectionTitle>
             <ControlRow>
                 <SliderLabel>Aperture (f-stop)</SliderLabel>
-                <Select
+                <StyledSelect
                     fullWidth
                     size="small"
-                    value={hardware?.fStop || ''}
+                    value={String(hardware?.fStop || '')}
                     onChange={handleFStopChange}
                     displayEmpty
                     disabled={!hardware?.lens}
-                    sx={{
-                        fontSize: '0.85rem',
-                        color: 'white',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'rgba(255, 255, 255, 0.2)',
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'rgba(255, 255, 255, 0.3)',
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            borderColor: '#4fc3f7',
-                        },
-                        '& .MuiSelect-icon': {
-                            color: 'rgba(255, 255, 255, 0.5)',
-                        },
-                    }}
                     MenuProps={{
                         PaperProps: {
                             sx: {
@@ -540,11 +471,11 @@ const HardwareVisualizationSettings: React.FC<HardwareVisualizationSettingsProps
                     }}
                 >
                     {hardware?.availableFStops?.map(fStop => (
-                        <MenuItem key={fStop} value={fStop}>
+                        <MenuItem key={fStop} value={String(fStop)}>
                             f/{fStop}
                         </MenuItem>
                     ))}
-                </Select>
+                </StyledSelect>
             </ControlRow>
 
             <ControlRow>

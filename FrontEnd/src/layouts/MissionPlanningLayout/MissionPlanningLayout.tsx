@@ -1,11 +1,10 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Outlet } from 'react-router-dom'; // Keep Outlet for potential future nested views if needed, but not used for steps now
+import React, { useState, lazy, Suspense } from 'react';
+// import { Outlet } from 'react-router-dom'; // Remove Outlet
 import {
     Box,
     Toolbar,
     Typography,
     CssBaseline,
-    AppBar,
     Paper,
     IconButton,
     ToggleButton,
@@ -17,7 +16,6 @@ import {
     Tab,
     Tooltip,
     SpeedDial,
-    SpeedDialIcon,
     SpeedDialAction,
     FormControlLabel,
     Switch,
@@ -25,9 +23,6 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
-    List,
-    ListItem,
-    ListItemText,
     Select,
     MenuItem,
     FormControl,
@@ -36,6 +31,7 @@ import {
     Checkbox
 } from '@mui/material';
 import { keyframes } from '@mui/system';
+import { Color3 } from '@babylonjs/core'; // Import Color3
 
 // Import commonly used icons directly instead of lazy loading
 import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
@@ -71,15 +67,16 @@ import { SelectChangeEvent } from '@mui/material/Select';
 import { feetToMeters } from '../../utils/sensorCalculations';
 import LoadingIndicator from '../../components/LoadingIndicator';
 
-// Lazy-loaded component imports for heavy components
+// Import steps directly
+import MissionPreChecksStep from '../../pages/MissionPage/Steps/MissionPreChecksStep';
+import BuildSceneStep from '../../pages/MissionPage/Steps/BuildSceneStep';
+import MissionPlanningStep from '../../pages/MissionPage/Steps/MissionPlanningStep';
+
+// Lazy-loaded component imports for heavy components (KEEP THESE LAZY)
 const HardwareSelectionModal = lazy(() => import('../../components/HardwareSelection/HardwareSelectionModal'));
 const SceneSettingsPanel = lazy(() => import('../../components/SceneControls/SceneSettingsPanel'));
 const TimelineControls = lazy(() => import('../../components/TimelineControls/TimelineControls'));
-const Local3DViewer = lazy(() => import('../../components/Local3DViewer'));
 const AssetTree = lazy(() => import('../../components/AssetTree/AssetTree'));
-const BuildSceneStep = lazy(() => import('../../pages/MissionPage/Steps/BuildSceneStep'));
-const MissionPreChecksStep = lazy(() => import('../../pages/MissionPage/Steps/MissionPreChecksStep'));
-const MissionPlanningStep = lazy(() => import('../../pages/MissionPage/Steps/MissionPlanningStep'));
 
 // Lazy-load utility functions that are more complex
 const { 
@@ -92,17 +89,16 @@ const {
 // Lazy-load hardware database
 const { 
   cameras, 
-  lenses, 
   droneModels, 
-  getCameraById, 
-  getLensById, 
-  getDroneModelById, 
   getCompatibleLenses, 
   getLensFStops 
 } = await import('../../utils/hardwareDatabase');
 
 // Update the import to use our new SceneSettings type
-import { SceneSettings } from '../../components/Local3DViewer/types/SceneSettings';
+import { SceneSettings } from '../../components/BabylonViewer/types/SceneSettings';
+
+// Import the BabylonViewer component
+import BabylonViewer from '../../components/BabylonViewer/BabylonViewer';
 
 // Loading fallback component
 const LoadingFallback = () => (
@@ -140,7 +136,6 @@ const MissionPlanningLayout: React.FC = () => {
         missions, // Get the list of all missions
         currentMission, // Get the currently active mission
         isLive, 
-        hardware,
         selectedPathSegmentIds // Get selected segment IDs
     } = missionState;
     const { mode, setThemeMode } = useThemeContext();
@@ -188,17 +183,11 @@ const MissionPlanningLayout: React.FC = () => {
     };
 
     // --- Handlers for inline hardware edits --- FIX Field Names
-    const handleHardwareFieldChange = (field: keyof HardwareState, value: any) => {
+    const handleHardwareFieldChange = (field: keyof HardwareState, value: unknown) => {
         missionDispatch({
             type: 'UPDATE_HARDWARE_FIELD',
             payload: { field, value },
         });
-    };
-
-    const handleHardwareSelectChange = (field: 'camera' | 'lens' | 'drone' | 'fStop' | 'shutterSpeed' | 'iso', event: SelectChangeEvent<string | number>) => { // Allow number & add new fields
-        // Ensure numeric values are treated as numbers
-        const value = (field === 'fStop' || field === 'iso') ? Number(event.target.value) : event.target.value;
-        handleHardwareFieldChange(field, value);
     };
 
     const handleSliderChange = (field: 'focusDistance', event: Event | React.SyntheticEvent<Element, Event>, value: number | number[]) => {
@@ -298,13 +287,14 @@ const MissionPlanningLayout: React.FC = () => {
     };
     
     // Handler for scene setting slider changes
-    const handleSceneSettingChange = (param: keyof SceneSettings, value: any) => {
-        let processedValue = value;
+    const handleSceneSettingChange = (param: keyof SceneSettings, value: SceneSettings[typeof param]) => {
+        // Broaden type to include array, null, undefined
+        let processedValue: string | number | boolean | Color3 | [number, number, number] | null | undefined = value;
         if (param === 'fov' || param === 'gridSize' || param === 'gridDivisions') {
-             processedValue = parseFloat(value);
+             processedValue = parseFloat(value as string); // Assume string for parseFloat
              if (isNaN(processedValue)) return; 
         }
-        // Add handling for color pickers later if needed
+        // TODO: Add specific handling for color arrays ([number, number, number]) if they need conversion
         missionDispatch({
             type: 'UPDATE_SCENE_SETTINGS',
             payload: { [param]: processedValue } as Partial<SceneSettings> 
@@ -570,19 +560,13 @@ const MissionPlanningLayout: React.FC = () => {
                     <Box sx={{ flexGrow: 1, p: isLeftPanelOpen ? 2 : 0, overflowY: 'auto' }}> {/* Conditional padding */}
                         {/* Only render content if pane is active and open */}
                         {isLeftPanelOpen && activeControlPane === 'pre-checks' && (
-                            <Suspense fallback={<LoadingFallback />}>
-                                <MissionPreChecksStep />
-                            </Suspense>
+                            <MissionPreChecksStep />
                         )}
                         {isLeftPanelOpen && activeControlPane === 'build-scene' && (
-                            <Suspense fallback={<LoadingFallback />}>
-                                <BuildSceneStep />
-                            </Suspense>
+                            <BuildSceneStep />
                         )}
                         {isLeftPanelOpen && activeControlPane === 'mission-planning' && (
-                            <Suspense fallback={<LoadingFallback />}>
-                                <MissionPlanningStep />
-                            </Suspense>
+                            <MissionPlanningStep />
                         )}
                     </Box>
                     
@@ -866,9 +850,13 @@ const MissionPlanningLayout: React.FC = () => {
                         overflow: 'hidden',   // Hide viewer overflow if it exceeds this box
                         minHeight: 0         // Needed for flex-grow in some scenarios
                     }}>
-                        <Suspense fallback={<LoadingFallback />}>
-                            <Local3DViewer height="100%" /> {/* Ensure viewer fills this wrapper */}
-                        </Suspense>
+                        {/* Remove the old placeholder and add BabylonViewer */}
+                         {/* 
+                         <Box sx={{width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#111'}}>
+                            <Typography color="text.secondary">3D Viewer Area</Typography>
+                         </Box>
+                         */}
+                         <BabylonViewer /> { /* Add the viewer */ }
                     </Box>
                     
                     {/* Sliding Bottom Panel (Remains the second flex item) */} 
@@ -1273,6 +1261,8 @@ const MissionPlanningLayout: React.FC = () => {
                                 <SceneSettingsPanel 
                                     settings={sceneSettings} 
                                     onChange={handleSceneSettingChange} 
+                                    open={true} // Assume always open in this context
+                                    onClose={() => {}} // No close action needed here
                                 />
                             </TabPanel>
                          </Box>

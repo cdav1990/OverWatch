@@ -3,24 +3,30 @@
   "version": "1.0.0",
   "description": "Overwatch Mission Planning Platform",
   "scripts": {
-    "dev": "cd client && npm run dev",
-    "dev:fast": "cd client && npm run dev:fast",
-    "dev:full": "cd client && npm run dev:full",
-    "build": "cd client && npm run build",
-    "preview": "cd client && npm run preview",
-    "start": "cd client && npm run dev"
+    "dev": "cd FrontEnd && npm run dev",
+    "dev:fast": "cd FrontEnd && npm run dev:fast",
+    "dev:full": "cd FrontEnd && npm run dev:full",
+    "build": "cd FrontEnd && npm run build",
+    "preview": "cd FrontEnd && npm run preview",
+    "start": "cd FrontEnd && npm run dev"
   },
   "dependencies": {
+    "@babylonjs/materials": "^8.2.2",
+    "@heroui/react": "^2.7.6",
     "@mui/x-tree-view": "^7.28.1",
     "@react-three/drei": "^10.0.5",
     "@react-three/fiber": "^9.1.1",
     "@types/multer": "^1.4.12",
     "@types/react-rnd": "^8.0.0",
     "@types/ws": "^8.18.1",
+    "autoprefixer": "^10.4.21",
+    "framer-motion": "^12.7.3",
     "multer": "^1.4.5-lts.2",
+    "postcss": "^8.5.3",
     "react-rnd": "^10.5.2",
     "react-use-websocket": "^4.13.0",
     "systeminformation": "^5.25.11",
+    "tailwindcss": "^4.1.4",
     "three": "^0.175.0",
     "ws": "^8.18.1"
   }

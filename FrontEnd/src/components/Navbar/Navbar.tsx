@@ -1,8 +1,7 @@
-import { AppBar, Box, Toolbar, Typography, Button, IconButton, Container, useTheme } from '@mui/material';
+import { AppBar, Box, Toolbar, Typography, Button, IconButton, Container } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useState } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
-import { useThemeContext } from '../../context/ThemeContext';
 import { styled, keyframes } from '@mui/material/styles';
 
 // Enhanced animations for industrial theme
@@ -24,7 +23,7 @@ const scanLine = keyframes`
 `;
 
 // Styled components for industrial theme
-const IndustrialAppBar = styled(AppBar)(({ theme }) => ({
+const IndustrialAppBar = styled(AppBar)(() => ({
   background: 'linear-gradient(180deg, rgba(8, 12, 18, 0.97) 0%, rgba(12, 20, 28, 0.97) 100%)',
   borderBottom: '1px solid rgba(79, 195, 247, 0.2)',
   boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
@@ -58,8 +57,6 @@ interface NavbarProps {
 
 const Navbar = ({ onMenuToggle }: NavbarProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const theme = useTheme();
-  const { mode } = useThemeContext();
   const location = useLocation();
 
   const handleDrawerToggle = () => {

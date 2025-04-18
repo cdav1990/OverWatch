@@ -1,0 +1,75 @@
+# OverWatch Mission Control - Project Status & Roadmap
+
+## 1. Project Overview
+
+The goal of this project is to create a web-based mission planning and control interface using CesiumJS for map visualization and React for the frontend framework. The application allows users to define mission areas (points or polygons), associate takeoff locations, manage missions, and visualize mission data on a 3D globe.
+
+## 2. Current Status (Completed Features)
+
+Based on recent development sprints:
+
+*   **Map Interaction:**
+    *   Initialized CesiumJS viewer with basic imagery layers (Aerial, Street, Terrain).
+    *   User can select a single point on the map.
+    *   User can draw a polygon region on the map (multi-click).
+    *   User can select a single Takeoff Location (TOL) point after defining the primary mission area.
+*   **Mission Management:**
+    *   Mission creation dialog appears after selecting a point or drawing a region.
+    *   Dialog allows setting Mission Name, Description, and Type.
+    *   Dialog allows initiating the selection of a single Takeoff Point.
+    *   Created missions are stored in context and persisted to local storage.
+    *   Missions are listed in the `GeoSidePanel`.
+    *   Selecting a mission in the side panel displays its details (Name, Type, Status, Description, Area, Takeoff Point).
+    *   Basic mission editing is implemented:
+        *   "Edit Mission" button opens the dialog pre-filled with existing data.
+        *   Users can modify name, description, type, and the single Takeoff Point.
+        *   Changes are saved via an `UPDATE_MISSION` action.
+    *   Basic mission deletion is functional via the side panel.
+*   **Visualization:**
+    *   Selected mission's Takeoff Point is visualized on the map with a distinct marker and label (`[Mission Name] - Takeoff`).
+    *   Selected mission's polygon region (if applicable) is visualized on the map (basic implementation, needs review/enhancement).
+
+## 3. Remaining Core Tasks (High Priority)
+
+These tasks are essential for the next phase of functionality, directly based on recent requests:
+
+*   **3.1. Multiple Takeoff Locations (TOLs) per Mission:**
+    *   **3.1.1. Data Structure:** Modify `Mission` type in `src/types/mission.ts`. Replace `localOrigin: LatLng | null` with `takeoffPoints: LatLng[]`. Update `MissionContext.tsx` initial state and actions accordingly.
+    *   **3.1.2. UI (Dialog):**
+        *   Change "Select Takeoff Point" button to "Add Takeoff Point".
+        *   Add a list component within the dialog to display currently added `tempTakeoffPoints`.
+        *   Add a "Remove" button next to each listed TOL in the dialog.
+    *   **3.1.3. UI (Side Panel):** Modify `GeoSidePanel.tsx` to display a list of TOL coordinates (`selectedMission.takeoffPoints`) instead of a single point.
+    *   **3.1.4. Map Interaction (`CesiumGlobe.tsx`):**
+        *   Update `_startTakeoffPointSelection` and the `handleTakeoffPointSelect` callback in `GeoPage.tsx` to *append* the selected point to a temporary array state (`tempTakeoffPoints`) instead of replacing a single state variable.
+    *   **3.1.5. Map Visualization (`CesiumGlobe.tsx`):** Modify the `useEffect` hook visualizing the `selectedMission` to iterate over `selectedMission.takeoffPoints` and create/manage multiple point entities and labels. Consider simple labeling like "Takeoff 1", "Takeoff 2" or using mission name + index.
+    *   **3.1.6. State Management (`GeoPage.tsx`):**
+        *   Replace `tempTakeoffPoint` state with `tempTakeoffPoints: LatLng[]`.
+        *   Update `handleSubmitMission` to save the `tempTakeoffPoints` array to the mission payload.
+        *   Update `handleEditMission` to correctly load the `takeoffPoints` array into `tempTakeoffPoints`.
+
+*   **3.2. Navigation to Mission Planning:**
+    *   **3.2.1. Routing:** Ensure the navigation triggered after mission creation/update (`navigate('/mission')`) correctly leads to the Mission Planning page/view.
+    *   **3.2.2. State Passing:** Verify that the `selectedMission` state is correctly accessed by the `/mission` route/component for planning purposes.
+
+## 4. Nice-to-Haves / Future Enhancements (Lower Priority)
+
+These items would improve usability and functionality but are not strictly required for the current core objectives:
+
+*   **4.1. Refined Polygon/Region Visualization:** Improve how the selected mission's polygon region is displayed (e.g., fill color, outline style options, better handling of large areas).
+*   **4.2. Mission Area Editing:** Allow users to modify the *original* selected point or drawn polygon *after* mission creation (currently only TOL can be changed via Edit). This would likely involve re-triggering the drawing/selection tools.
+*   **4.3. Sequential TOL Labeling:** Implement dynamic labeling for multiple TOLs (e.g., "Yorktown - TOL 1", "Yorktown - TOL 2"). Requires careful management of entity labels when TOLs are added/removed during editing.
+*   **4.4. Improved Error Handling & User Feedback:** Provide more specific error messages and visual feedback (e.g., loading indicators, success messages after saving). Add feedback during map selection modes (e.g., cursor changes, tooltips).
+*   **4.5. Map Controls:** Add standard map controls (Zoom In/Out, Home button, Fullscreen).
+*   **4.6. Advanced Styling:** Further enhance the UI styling for components like the dialog, side panel, and buttons for a more polished enterprise look.
+*   **4.7. Backend Integration:** Plan and implement backend API endpoints for persistent mission storage instead of relying solely on local storage.
+*   **4.8. Undo/Redo Functionality:** Add undo/redo capabilities for drawing actions or potentially mission edits.
+
+## 5. Potential Refactoring / Technical Debt
+
+*   Review type safety, especially around Cesium objects passed between components or stored in state (`tempRegion.rectangle: any`).
+*   Consolidate helper functions (like `generateUUID`) if used in multiple places.
+*   Assess component size (`GeoPage.tsx` is growing) and consider refactoring logic into smaller, reusable hooks or components.
+*   Ensure consistent cleanup of Cesium event handlers and entities to prevent memory leaks.
+
+This roadmap provides a clear path forward, focusing first on implementing multiple TOLs as the next major feature.

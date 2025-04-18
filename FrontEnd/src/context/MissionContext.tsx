@@ -18,7 +18,7 @@ import { AppMode, useAppContext } from './AppContext';
 import { getCameraById, getLensById, getCompatibleLenses, getDroneModelById, getLensFStops } from '../utils/hardwareDatabase';
 import { calculateSensorDimensions, calculateFOV, feetToMeters } from '../utils/sensorCalculations';
 import * as THREE from 'three';
-import { SceneSettings, DEFAULT_SCENE_SETTINGS } from '../components/Local3DViewer/types/SceneSettings';
+import { SceneSettings, DEFAULT_SCENE_SETTINGS } from '../components/BabylonViewer/types/SceneSettings';
 import { latLngToLocal } from '../utils/coordinateUtils';
 
 // Define Hardware State Type
@@ -32,6 +32,7 @@ export interface HardwareState {
     focusDistance: number; // Focus distance in meters
     shutterSpeed: string | null; // e.g., "1/1000", "1/500"
     iso: number | null;        // e.g., 100, 200, 400
+    gimbalPitch?: number; // Add gimbal pitch (degrees)
     // Store detailed objects for easier access in components
     droneDetails: DroneModel | null;
     cameraDetails: Camera | null;
@@ -189,7 +190,7 @@ type MissionAction =
   | { type: 'TOGGLE_DRONE_VISIBILITY' }
   | { type: 'TOGGLE_CAMERA_FRUSTUM_VISIBILITY' }
   | { type: 'TOGGLE_GCP_VISIBILITY'; payload: string }
-  | { type: 'SET_ACTIVE_CONTROL_PANE'; payload: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation' }
+  | { type: 'SET_ACTIVE_CONTROL_PANE'; payload: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation' | 'hardware' }
   | { type: 'UPDATE_SCENE_SETTINGS'; payload: Partial<SceneSettings> }
   | { type: 'SET_HARDWARE'; payload: Partial<HardwareState> }
   | { type: 'UPDATE_HARDWARE_FIELD'; payload: { field: keyof HardwareState; value: any } }
@@ -252,7 +253,7 @@ export interface MissionState {
   drawingMode: 'polygon' | null;
   polygonPoints: LocalCoord[];
   polygonPreviewPoint: LocalCoord | null;
-  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation';
+  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation' | 'hardware';
   isSelectingTakeoffPoint: boolean; // Added state for selection mode
   isDroneVisible: boolean; // <-- Add drone visibility state
   isCameraFrustumVisible: boolean; // <-- Add camera visibility state
@@ -394,7 +395,7 @@ const initialState: MissionState = {
   drawingMode: null,
   polygonPoints: [],
   polygonPreviewPoint: null,
-  activeControlPane: 'mission-planning', // Default to mission planning
+  activeControlPane: 'pre-checks', // Changed from 'hardware' to 'pre-checks' to make it the default first step
   isSelectingTakeoffPoint: false,
   isDroneVisible: true, 
   isCameraFrustumVisible: false,
@@ -1144,7 +1145,7 @@ function missionReducer(state: MissionState, action: MissionAction): MissionStat
     
     case 'SET_ACTIVE_CONTROL_PANE':
       // Ensure payload is one of the allowed types
-      const validPanes: MissionState['activeControlPane'][] = ['pre-checks', 'build-scene', 'mission-planning', 'live-operation'];
+      const validPanes: MissionState['activeControlPane'][] = ['pre-checks', 'build-scene', 'mission-planning', 'live-operation', 'hardware'];
       if (validPanes.includes(action.payload as any)) {
         return {
           ...state,
@@ -1702,8 +1703,8 @@ const MissionUIContext = createContext<{
   drawingMode: 'polygon' | null;
   polygonPoints: LocalCoord[];
   polygonPreviewPoint: LocalCoord | null;
-  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation';
-  isSelectingTakeoffPoint: boolean;
+  activeControlPane: 'pre-checks' | 'build-scene' | 'mission-planning' | 'live-operation' | 'hardware';
+  isSelectingTakeoffPoint: boolean; // Added state for selection mode
   isDroneVisible: boolean;
   isCameraFrustumVisible: boolean;
   hiddenGcpIds: string[];

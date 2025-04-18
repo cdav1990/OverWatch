@@ -12,7 +12,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      'three': path.resolve('./node_modules/three'),
     },
   },
   define: {
@@ -47,10 +46,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           cesium: ['cesium'],
-          'three-core': ['three'],
-          'three-fiber': ['@react-three/fiber'],
-          'three-drei': ['@react-three/drei'],
-          'three-post': ['@react-three/postprocessing'],
           react: ['react', 'react-dom', 'react-router-dom'],
           mui: [
             '@mui/material',
@@ -69,13 +64,8 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: [
-      'three', 
-      '@react-three/fiber', 
-      '@react-three/drei', 
-      '@react-three/postprocessing',
       'react', 
       'react-dom', 
-      'react-router-dom'
     ],
     force: false,
     esbuildOptions: {
